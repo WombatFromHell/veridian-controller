@@ -1,51 +1,89 @@
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::env;
+use std::fmt;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::Read;
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use signal_hook::{iterator::Signals, consts::SIGINT};
+use std::error::Error;
 
+#[derive(Debug, Deserialize, Serialize)]
 struct Config {
-    temperature_window: Vec<u8>,
+    temperatures: Vec<u8>,
+    fan_speeds: Vec<u8>,
     fan_speed_floor: u8,
     fan_speed_ceiling: u8,
+    fan_hysteresis: u8,
+    window_size: usize,
+    global_timer: u64,
+    smooth_mode: bool,
 }
 
-impl Config {
-    fn new(file_path: &str) -> Result<Config, &'static str> {
-        let file = File::open(file_path).map_err(|_| "Failed to open config file")?;
-        let reader = BufReader::new(file);
+#[derive(Debug)]
+enum ConfigError {
+    Io(std::io::Error),
+    Toml(toml::de::Error),
+    MissingHomeDir,
+}
 
-        let mut temperature_window = Vec::new();
-        let mut fan_speed_floor = 0;
-        let mut fan_speed_ceiling = 0;
-
-        for line in reader.lines() {
-            let line = line.map_err(|_| "Failed to read line from config file")?;
-            let parts: Vec<&str> = line.split('=').collect();
-            if parts.len() != 2 {
-                return Err("Invalid config line format");
-            }
-
-            match parts[0].trim() {
-                "temperature_window" => {
-                    let values: Vec<u8> = parts[1]
-                        .split(',')
-                        .map(|s| s.trim().parse().unwrap_or(0))
-                        .collect();
-                    temperature_window = values;
-                }
-                "fan_speed_floor" => fan_speed_floor = parts[1].trim().parse().unwrap_or(0),
-                "fan_speed_ceiling" => fan_speed_ceiling = parts[1].trim().parse().unwrap_or(0),
-                _ => return Err("Invalid config option"),
-            }
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            temperatures: vec![32, 48, 58, 68, 78, 88],
+            fan_speeds: vec![0, 30, 55, 65, 80, 100],
+            fan_speed_floor: 30,
+            fan_speed_ceiling: 100,
+            fan_hysteresis: 3,
+            smooth_mode: true,
+            window_size: 5,
+            global_timer: 2,
         }
+    }
+}
 
-        Ok(Config {
-            temperature_window,
-            fan_speed_floor,
-            fan_speed_ceiling,
-        })
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ConfigError::Io(err) => write!(f, "IO error: {}", err),
+            ConfigError::Toml(err) => write!(f, "TOML parse error: {}", err),
+            ConfigError::MissingHomeDir => write!(f, "Missing HOME directory"),
+        }
+    }
+}
+impl std::error::Error for ConfigError {}
+
+impl Config {
+    fn new() -> Result<Self, ConfigError> {
+        let home_dir = env::var("HOME").ok().ok_or(ConfigError::MissingHomeDir)?;
+        let cwd_config_path = "veridian-controller.toml";
+        let xdg_config_path = format!("{}/.config/veridian-controller.toml", home_dir);
+
+        let mut file = if let Ok(file) = File::open(cwd_config_path) {
+            println!("Loaded config from: {}", &cwd_config_path);
+            file
+        } else {
+            match File::open(&xdg_config_path) {
+                Ok(file) => {
+                    println!("Loaded config from: {}", &xdg_config_path);
+                    file
+                }
+                Err(_) => {
+                    println!("Failed to load config, using defaults!");
+                    return Ok(Self::default());
+                }
+            }
+        };
+
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .map_err(ConfigError::Io)?;
+
+        let config: Self = toml::from_str(&contents).map_err(ConfigError::Toml)?;
+
+        Ok(config)
     }
 }
 
@@ -70,7 +108,21 @@ fn get_fan_speed() -> u8 {
     speed_str.parse().unwrap_or(0)
 }
 
+fn set_fan_control(mode: u8) {
+    let mut child = Command::new("sudo")
+        .args(&["nvidia-settings", "-a", format!("*:1[gpu:0]/GPUFanControlState={}", mode).as_str()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to execute nvidia-settings");
+
+    child.wait().expect("Failed to wait for nvidia-settings");
+}
+
 fn set_fan_speed(speed: u8) {
+    println!("Setting fan speed: {} %", speed);
+
     let mut child = Command::new("sudo")
         .args(&[
             "nvidia-settings",
@@ -82,95 +134,91 @@ fn set_fan_speed(speed: u8) {
             &format!("*:1[fan-1]/GPUTargetFanSpeed={}", speed),
         ])
         .stdin(Stdio::piped())
+        .stdout(Stdio::null())
         .spawn()
         .expect("Failed to execute nvidia-settings");
 
     child.wait().expect("Failed to wait for nvidia-settings");
 }
 
-fn adjust_fan_speed(
-    temp: u8,
-    fan_speed: &mut u8,
-    config: &Config,
-    last_temp: u8,
-    last_fan_speed_increase: &mut Instant,
-    last_fan_speed_decrease: &mut Instant,
-) {
-    if temp > config.temperature_window[config.temperature_window.len() - 1] {
-        if *fan_speed < config.fan_speed_ceiling {
-            let now = Instant::now();
-            if now.duration_since(*last_fan_speed_increase).as_secs() >= 3 {
-                *fan_speed += 5;
-                *last_fan_speed_increase = now;
-            }
-        }
-    } else if temp < config.temperature_window[0] {
-        if *fan_speed > config.fan_speed_floor {
-            let now = Instant::now();
-            if now.duration_since(*last_fan_speed_decrease).as_secs() >= 10 {
-                *fan_speed -= 1;
-                *last_fan_speed_decrease = now;
-            }
-        }
-    } else {
-        let mut idx = 0;
-        for i in 0..config.temperature_window.len() - 1 {
-            if temp >= config.temperature_window[i] && temp < config.temperature_window[i + 1] {
-                idx = i;
-                break;
-            }
+fn adjust_fan_speed(temp: u8, fan_speed: &mut u8, config: &Config, samples: &mut VecDeque<u32>) {
+    *fan_speed = (*fan_speed).clamp(0, config.fan_speed_ceiling);
+
+    samples.push_back(temp as u32);
+    if samples.len() > config.window_size {
+        samples.reserve(1);
+        samples.pop_front();
+    }
+    let smooth_temp: u32 = (samples.iter().sum::<u32>() as f32 / samples.len() as f32).round() as u32;
+
+    // Find the closest temperature match for adjusting fan speed
+    let mut closest_temp_index = None;
+    let mut closest_diff = u32::MAX;
+
+    for (i, &t) in config.temperatures.iter().enumerate() {
+        let mut diff: u32 = (temp as i32 - t as i32).abs() as u32;
+        // use average temperature in smooth_mode
+        if config.smooth_mode {
+            diff = (smooth_temp as i32 - t as i32).abs() as u32;
         }
 
-        if temp > last_temp {
-            if *fan_speed < config.fan_speed_ceiling {
-                let now = Instant::now();
-                if now.duration_since(*last_fan_speed_increase).as_secs() >= 3 {
-                    *fan_speed += 5;
-                    *last_fan_speed_increase = now;
-                }
-            }
+        if diff < closest_diff {
+            closest_diff = diff;
+            closest_temp_index = Some(i);
+        }
+    }
+
+    if let Some(index) = closest_temp_index {
+        if config.smooth_mode {
+            println!(
+                "GPU Temp [Avg]: {} C / Fan Speed: {} %",
+                smooth_temp, fan_speed
+            );
         } else {
-            if *fan_speed > config.fan_speed_floor {
-                let now = Instant::now();
-                if now.duration_since(*last_fan_speed_decrease).as_secs() >= 10 {
-                    *fan_speed -= 1;
-                    *last_fan_speed_decrease = now;
-                }
-            }
+            println!("GPU Temp: {} C / Fan Speed: {} %", temp, fan_speed);
         }
-
-        if *fan_speed > config.temperature_window[idx] + 10 {
-            *fan_speed = config.temperature_window[idx] + 10;
-        }
+        // Adjust fan speed based on the closest temperature in the temperature table
+        let target_fan_speed = config.fan_speeds[index];
+        *fan_speed = target_fan_speed.clamp(0, config.fan_speed_ceiling);
+        set_fan_speed(*fan_speed);
     }
 }
 
-fn main() {
-    let config = Config::new("config.txt").unwrap_or_else(|err| {
+fn main() -> Result<(), Box<dyn Error>> {
+    let mut signals = Signals::new(&[SIGINT])?;
+    thread::spawn(move || {
+        for signal in signals.forever() {
+            match signal {
+                SIGINT => {
+                    println!("Caught SIGINT, cleaning up...");
+                    set_fan_control(0 as u8);
+                    std::process::exit(0);
+                }
+                _ => (),
+            }
+            println!("Caught signal: {:?}", signal);
+            std::process::exit(0);
+        }
+    });
+
+    let config = Config::new().unwrap_or_else(|err| {
         println!("Error: {}", err);
         std::process::exit(1);
     });
+    if config.fan_speeds.len() != config.temperatures.len() {
+        println!("Error: fan_speeds and temperatures arrays must be the same length!");
+        std::process::exit(1);
+    }
 
     let mut fan_speed = get_fan_speed();
-    let mut last_temp = get_gpu_temp();
-    let mut last_fan_speed_increase = Instant::now();
-    let mut last_fan_speed_decrease = Instant::now();
+    let mut samples: VecDeque<u32> = VecDeque::with_capacity(config.window_size);
 
     loop {
         let temp = get_gpu_temp();
 
-        adjust_fan_speed(
-            temp,
-            &mut fan_speed,
-            &config,
-            last_temp,
-            &mut last_fan_speed_increase,
-            &mut last_fan_speed_decrease,
-        );
+        set_fan_control(1 as u8);
+        adjust_fan_speed(temp, &mut fan_speed, &config, &mut samples);
 
-        set_fan_speed(fan_speed);
-        last_temp = temp;
-
-        thread::sleep(Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(config.global_timer));
     }
 }
