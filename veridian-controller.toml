@@ -1,13 +1,22 @@
-sampling_window_size = 5
-temp_thresholds = [52, 62, 72, 84]
-fan_speeds = [46, 62, 80, 100]
+# represents temperature thresholds in celsius
+temp_thresholds = [38, 50, 60, 70, 74, 84]
+# represents target fan speed when crossing the matching temp threshold
+fan_speeds =      [30, 46, 55, 62, 80, 100]
+# the lowest fan speed that registers RPMs on the GPU fans
 fan_speed_floor = 46
+# this will either be 80 or 100 depending on what gen GPU you have
 fan_speed_ceiling = 100
-incr_weight = 0.5
-decr_weight = 0.2
+# the sampling window for averaging is comprised of X samples every Y seconds
+sampling_window_size = 5
+# the insensitivity boundry to speed/temperature changes
 hysteresis = 3
+# how frequently to poll the GPU for data
 global_delay = 2
-post_adjust_delay = 4
+# how frequently to send the target fan speed command
+post_adjust_delay = 6
+# special mode that tries to smoothly adjust between the current speed and the target speed
 smooth_mode = true
+# the maximum percentage change per fan speed command
 smooth_mode_fan_step = 5
-debug_mode = true
+# how frequently how to send smoothed step speed commands
+smooth_mode_dwell_time = 4

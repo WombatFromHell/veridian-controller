@@ -11,15 +11,13 @@ pub struct Config {
     pub fan_speeds: Vec<u32>,
     pub fan_speed_floor: u32,
     pub fan_speed_ceiling: u32,
-    pub incr_weight: f32,
-    pub decr_weight: f32,
     pub hysteresis: u32,
     pub sampling_window_size: usize,
     pub global_delay: u64,
     pub post_adjust_delay: u64,
     pub smooth_mode: bool,
     pub smooth_mode_fan_step: u32,
-    pub debug_mode: bool,
+    pub smooth_mode_dwell_time: u64,
 }
 
 #[derive(Debug)]
@@ -34,19 +32,17 @@ pub enum ConfigError {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            temp_thresholds: vec![53, 63, 73, 86],
-            fan_speeds: vec![46, 62, 80, 100],
-            fan_speed_floor: 30,
+            temp_thresholds: vec![38, 50, 60, 70, 82],
+            fan_speeds: vec![30, 46, 62, 80, 100],
+            fan_speed_floor: 46,
             fan_speed_ceiling: 100,
-            incr_weight: 0.5,
-            decr_weight: 0.2,
-            hysteresis: 3,
             sampling_window_size: 5,
+            hysteresis: 3,
             global_delay: 2,
-            post_adjust_delay: 4,
+            post_adjust_delay: 6,
             smooth_mode: false,
             smooth_mode_fan_step: 5,
-            debug_mode: false,
+            smooth_mode_dwell_time: 4,
         }
     }
 }
@@ -148,4 +144,3 @@ pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, Confi
 
     Ok(config)
 }
-
