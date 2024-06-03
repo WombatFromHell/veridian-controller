@@ -6,9 +6,6 @@ use crate::commands;
 use crate::config::Config;
 use crate::helpers;
 
-const MIN_FAN_SPEED: u32 = 30;
-const MAX_FAN_SPEED: u32 = 30;
-
 pub struct ThermalManager<'a> {
     samples: VecDeque<u32>,
     temp_thresholds: Vec<u32>,
@@ -77,9 +74,10 @@ impl<'a> ThermalManager<'a> {
                 self.get_smooth_speed(self.current_fan_speed, target_speed, now);
             smooth_mode = "~";
         } else if target_speed > cur_speed_hyst_hi || target_speed < cur_speed_hyst_lo {
-            // generally post-Pascal GPUs cannot go below 30% fan speed
+            // NOTE: generally post-Pascal GPUs cannot go below 30% fan speed
             // ... or above 80% / 100% depending on the generation and maker
-            self.target_fan_speed = target_speed.clamp(MIN_FAN_SPEED, MAX_FAN_SPEED);
+            self.target_fan_speed =
+                target_speed.clamp(self.config.fan_speed_floor, self.config.fan_speed_ceiling);
         }
 
         if self.current_fan_speed != self.target_fan_speed && cooldown_elapsed {
@@ -118,14 +116,8 @@ impl<'a> ThermalManager<'a> {
             adjusted_speed = max(current_speed - step_size, lower_threshold);
         }
 
-        // don't let speed fall below practical lower boundry
-        let min_speed = if self.config.fan_speed_floor <= MIN_FAN_SPEED {
-            MIN_FAN_SPEED
-        } else {
-            self.config.fan_speed_floor
-        };
-
         self.last_smooth_adjust = Some(now);
-        adjusted_speed.clamp(min_speed, self.config.fan_speed_ceiling)
+
+        adjusted_speed.clamp(self.config.fan_speed_floor, self.config.fan_speed_ceiling)
     }
 }

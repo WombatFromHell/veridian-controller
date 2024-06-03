@@ -1,11 +1,14 @@
 [package]
 name = "veridian-controller"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+
+[profile.release]
+linker = "static"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 clap = { version = "4.5.4", features = ["derive"] }
-signal-hook = "0.3.17"
+signal-hook = { version = "0.3.17", features = ["extended-siginfo"] }
 toml = "0.8.13"
 chrono = "0.4.38"

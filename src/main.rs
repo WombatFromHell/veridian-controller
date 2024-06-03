@@ -1,6 +1,8 @@
 use clap::Parser;
-use signal_hook::{consts::SIGINT, consts::SIGTERM, iterator::Signals};
+use signal_hook::flag;
 use std::error::Error;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -17,34 +19,33 @@ pub struct Args {
     file: Option<String>,
 }
 
+fn cleanup() -> Result<(), Box<dyn Error>> {
+    println!("Attempting to gracefully shutdown...");
+
+    commands::set_fan_control(0)?;
+
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    let terminate = Arc::new(AtomicBool::new(false));
     let args = Args::parse();
 
-    let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
-    thread::spawn(move || {
-        for signal in signals.forever() {
-            match signal {
-                SIGINT | SIGTERM => {
-                    println!("Caught graceful shutdown, cleaning up...");
-                    commands::set_fan_control(0).unwrap();
-                    std::process::exit(1);
-                }
-                _ => {
-                    println!("Caught signal: {:?}", signal);
-                    std::process::exit(1);
-                }
-            }
-        }
-    });
+    // register some common termination signals for use with Ctrl+C and SystemD
+    flag::register(signal_hook::consts::SIGTERM, Arc::clone(&terminate))?;
+    flag::register(signal_hook::consts::SIGABRT, Arc::clone(&terminate))?;
+    flag::register(signal_hook::consts::SIGINT, Arc::clone(&terminate))?;
 
     let config = config::load_config_from_env(args.file)?;
-
-    commands::set_fan_control(1)?;
     let mut thermal_manager = thermalmanager::ThermalManager::new(&config);
 
-    loop {
+    while !terminate.load(Ordering::Relaxed) {
         thermal_manager.update_temperature();
         thermal_manager.calculate_target_fan_speed()?;
         thread::sleep(Duration::from_secs(config.global_delay));
     }
+
+    cleanup()?;
+
+    Ok(())
 }

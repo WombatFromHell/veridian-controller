@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
-use std::fs::File;
-use std::io::Write;
-use std::io::{ErrorKind, Read};
+use std::fs::{File, OpenOptions};
+use std::io::{ErrorKind, Read, Write};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -32,7 +31,7 @@ pub enum ConfigError {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            temp_thresholds: vec![38, 50, 60, 70, 82],
+            temp_thresholds: vec![38, 50, 60, 76, 82],
             fan_speeds: vec![30, 46, 62, 80, 100],
             fan_speed_floor: 46,
             fan_speed_ceiling: 100,
@@ -98,16 +97,19 @@ impl Config {
         let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
         let xdg_config_path = format!("{}/.config/veridian-controller.toml", home_dir);
 
-        let mut file = File::create(&xdg_config_path).map_err(|e| {
-            if e.kind() == ErrorKind::PermissionDenied {
-                ConfigError::Io(e)
-            } else {
-                ConfigError::Io(e)
-            }
-        })?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&xdg_config_path)
+            .map_err(|e| {
+                if e.kind() == ErrorKind::PermissionDenied {
+                    ConfigError::Io(e)
+                } else {
+                    ConfigError::Io(e)
+                }
+            })?;
 
         let config_string = toml::to_string(self).unwrap();
-
         file.write_all(config_string.as_bytes())
             .map_err(ConfigError::Io)?;
 
@@ -116,31 +118,37 @@ impl Config {
 }
 
 pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, ConfigError> {
-    let config = Config::new(custom_path).unwrap_or_else(|err| {
-        match err {
+    let config = Config::new(custom_path);
+    match config {
+        Ok(c) => Ok(c),
+        Err(err) => match err {
             ConfigError::MissingConfigFile => {
                 println!("Error: No configuration file found!");
                 println!(
                     "Writing a default configuration file to ~/.config/veridian-controller.toml..."
                 );
-                println!("Please rerun the program to use the new configuration file.");
-                Config::default().write_to_file().unwrap();
+                if let Err(write_error) = Config::default().write_to_file() {
+                    eprintln!("Failed to write default config file: {}", write_error);
+                    std::process::exit(1);
+                }
+                Ok(Config::default())
             }
             ConfigError::Io(err) => {
                 println!("Error: {}", err);
+                std::process::exit(1);
             }
             ConfigError::Toml(err) => {
                 println!("Error: {}", err);
+                std::process::exit(1);
             }
             ConfigError::MissingHomeDir => {
                 println!("Error: HOME environment variable not set!");
+                std::process::exit(1);
             }
             ConfigError::InvalidArrayFormat => {
                 println!("Error: fan_speeds and temp_thresholds arrays must be the same length!");
+                std::process::exit(1);
             }
-        }
-        std::process::exit(1);
-    });
-
-    Ok(config)
+        },
+    }
 }

@@ -5,10 +5,10 @@ After=display-manager.service
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/veridian-controller
+ExecStart=%h/.local/bin/veridian-controller -f ~/.config/veridian-controller.toml
 Restart=on-failure
 RestartSec=5
-TimeoutStopSec=5
+TimeoutStopSec=10
 
 [Install]
 WantedBy=graphical-session.target

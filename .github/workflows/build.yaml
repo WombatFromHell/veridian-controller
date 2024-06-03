@@ -1,0 +1,30 @@
+name: Build and Upload Binary
+
+on:
+  push:
+    branches:
+      - main # only trigger on merges
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get project version
+        id: get_version
+        run: |
+          VERSION=$(sed -nE 's/^version = "(.*)"/\1/p' Cargo.toml)
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build project
+        run: |
+          chmod +x ./build.sh
+          ./build.sh
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: veridian-controller_${{ steps.get_version.outputs.VERSION }}.AppImage
+          path: target/appimage/*.AppImage
