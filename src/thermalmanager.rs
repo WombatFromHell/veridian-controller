@@ -67,8 +67,8 @@ impl<'a> ThermalManager<'a> {
         };
 
         let mut smooth_mode = "";
-        let cur_speed_hyst_hi = self.current_fan_speed + self.config.hysteresis;
-        let cur_speed_hyst_lo = self.current_fan_speed + self.config.hysteresis;
+        let cur_speed_hyst_hi = self.current_fan_speed.saturating_add(self.config.hysteresis);
+        let cur_speed_hyst_lo = self.current_fan_speed.saturating_sub(self.config.hysteresis);
         if self.config.smooth_mode {
             self.target_fan_speed =
                 self.get_smooth_speed(self.current_fan_speed, target_speed, now);
@@ -104,8 +104,8 @@ impl<'a> ThermalManager<'a> {
             }
         }
 
-        let lower_threshold = target_speed - self.config.hysteresis / 2;
-        let upper_threshold = target_speed + self.config.hysteresis / 2;
+        let upper_threshold = target_speed.saturating_add(self.config.hysteresis) / 2;
+        let lower_threshold = target_speed.saturating_sub(self.config.hysteresis) / 2;
 
         let mut adjusted_speed = current_speed;
         let step_size = self.config.smooth_mode_fan_step;
