@@ -75,5 +75,3 @@ smooth_mode_fan_step = 5
   cp -f veridian-controller.service ~/.config/systemd/user && \
   systemctl --user daemon-reload && systemctl --user enable --now veridian-controller
   ```
-
-## Donations <a href="https://www.buymeacoffee.com/wombatfromhell" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="21" width="87"></a>
