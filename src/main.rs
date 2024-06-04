@@ -29,6 +29,12 @@ fn cleanup() -> Result<(), Box<dyn Error>> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // try to disable fan control if we panic for whatever reason
+    std::panic::set_hook(Box::new(|_| {
+        cleanup().unwrap();
+        let _ = std::panic::take_hook();
+    }));
+
     match filelock::acquire_lock() {
         // ensure only one copy of the program is running at a time
         Ok(lock) => {
@@ -45,7 +51,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             while !terminate.load(Ordering::Relaxed) {
                 thermal_manager.update_temperature();
-                thermal_manager.calculate_target_fan_speed()?;
+                thermal_manager.set_target_fan_speed()?;
                 thread::sleep(Duration::from_secs(config.global_delay));
             }
 

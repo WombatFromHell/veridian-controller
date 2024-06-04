@@ -37,10 +37,10 @@ to use it with the least amount of friction:
 - Customize the `veridian-controller.toml` config file under `~/.config/veridian-controller.toml`:
 
 ```toml
-# represents temperature thresholds in celsius
-temp_thresholds = [38, 50, 60, 70, 76, 82]
-# represents target fan speed when crossing the matching temp threshold
-fan_speeds =      [30, 46, 55, 62, 80, 100]
+# represents temperature thresholds in celsius (must be monotonically increasing)
+temp_thresholds = [50, 60, 70, 82, 86]
+# represents target fan speed when crossing the matching temp threshold (must be monotonically increasing)
+fan_speeds =      [46, 55, 62, 80, 100]
 # the lowest fan speed that registers RPMs on the GPU fans
 fan_speed_floor = 46
 # this will either be 80 or 100 depending on what gen GPU you have
@@ -51,14 +51,16 @@ sampling_window_size = 5
 hysteresis = 3
 # how frequently to poll the GPU for data
 global_delay = 2
-# how frequently to send the target fan speed command
-post_adjust_delay = 6
+# how infrequently to send fan speed adjustments
+fan_dwell_time = 10
 # special mode that tries to smoothly adjust between the current speed and the target speed
-smooth_mode = true
+smooth_mode = false
+# fan speed weighting for tunable sensitivity when temperature is increasing
+smooth_mode_incr_weight = 0.4
+# fan speed weighting for tunable sensitivity when temperature is decreasing
+smooth_mode_decr_weight = 0.1
 # the maximum percentage change per fan speed command in smooth mode
 smooth_mode_fan_step = 5
-# how frequently how to send smoothed step speed commands
-smooth_mode_dwell_time = 4
 ```
 
 - A user-level systemd service file is included in the project directory as an

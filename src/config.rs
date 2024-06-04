@@ -13,12 +13,11 @@ pub struct Config {
     pub hysteresis: u32,
     pub sampling_window_size: usize,
     pub global_delay: u64,
-    pub post_adjust_delay: u64,
+    pub fan_dwell_time: u64,
     pub smooth_mode: bool,
-    pub smooth_mode_incr_weight: f32,
-    pub smooth_mode_decr_weight: f32,
+    pub smooth_mode_incr_weight: f64,
+    pub smooth_mode_decr_weight: f64,
     pub smooth_mode_fan_step: u32,
-    pub smooth_mode_dwell_time: u64,
 }
 
 #[derive(Debug)]
@@ -33,19 +32,18 @@ pub enum ConfigError {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            temp_thresholds: vec![38, 50, 60, 70, 82, 86],
-            fan_speeds: vec![30, 46, 55, 62, 80, 100],
+            temp_thresholds: vec![50, 60, 70, 82, 86],
+            fan_speeds: vec![46, 55, 62, 80, 100],
             fan_speed_floor: 46,
             fan_speed_ceiling: 100,
             sampling_window_size: 5,
             hysteresis: 3,
             global_delay: 2,
-            post_adjust_delay: 6,
+            fan_dwell_time: 10,
             smooth_mode: false,
             smooth_mode_incr_weight: 0.4,
             smooth_mode_decr_weight: 0.1,
             smooth_mode_fan_step: 5,
-            smooth_mode_dwell_time: 4,
         }
     }
 }
@@ -117,8 +115,9 @@ impl Config {
 
 pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, ConfigError> {
     let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
-    let path = Some(custom_path.unwrap_or(format!("{}/.config/veridian-controller.toml", home_dir)));
-    
+    let path =
+        Some(custom_path.unwrap_or(format!("{}/.config/veridian-controller.toml", home_dir)));
+
     let config = Config::new(path.clone());
 
     match config {
@@ -127,7 +126,8 @@ pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, Confi
             ConfigError::MissingConfigFile => {
                 println!("Error: No configuration file found!");
                 println!(
-                    "Writing a default configuration file to: {:?}...", path.clone().unwrap()
+                    "Writing a default configuration file to: {:?}...",
+                    path.clone().unwrap()
                 );
                 if let Err(write_error) = Config::default().write_to_file(path) {
                     eprintln!("Failed to write default config file: {}", write_error);
