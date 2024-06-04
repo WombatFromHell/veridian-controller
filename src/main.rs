@@ -29,6 +29,8 @@ fn cleanup() -> Result<(), Box<dyn Error>> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let args = Args::parse();
+
     // try to disable fan control if we panic for whatever reason
     std::panic::set_hook(Box::new(|_| {
         cleanup().unwrap();
@@ -37,9 +39,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match filelock::acquire_lock() {
         // ensure only one copy of the program is running at a time
-        Ok(lock) => {
+        Ok(_) => {
             let terminate = Arc::new(AtomicBool::new(false));
-            let args = Args::parse();
 
             // register some common termination signals for use with Ctrl+C and SystemD
             flag::register(signal_hook::consts::SIGTERM, Arc::clone(&terminate))?;
@@ -56,7 +57,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             cleanup()?;
-            drop(lock);
         }
         Err(err) => {
             eprintln!("Error: {}", err);
