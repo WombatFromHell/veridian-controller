@@ -1,10 +1,7 @@
 [package]
 name = "veridian-controller"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
-
-[profile.release]
-linker = "static"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

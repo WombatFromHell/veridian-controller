@@ -13,10 +13,11 @@ pub struct Config {
     pub hysteresis: u32,
     pub sampling_window_size: usize,
     pub global_delay: u64,
-    pub post_adjust_delay: u64,
+    pub fan_dwell_time: u64,
     pub smooth_mode: bool,
+    pub smooth_mode_incr_weight: f64,
+    pub smooth_mode_decr_weight: f64,
     pub smooth_mode_fan_step: u32,
-    pub smooth_mode_dwell_time: u64,
 }
 
 #[derive(Debug)]
@@ -31,17 +32,18 @@ pub enum ConfigError {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            temp_thresholds: vec![38, 50, 60, 76, 82],
-            fan_speeds: vec![30, 46, 62, 80, 100],
+            temp_thresholds: vec![50, 60, 70, 82, 86],
+            fan_speeds: vec![46, 55, 62, 80, 100],
             fan_speed_floor: 46,
             fan_speed_ceiling: 100,
             sampling_window_size: 5,
             hysteresis: 3,
             global_delay: 2,
-            post_adjust_delay: 6,
+            fan_dwell_time: 10,
             smooth_mode: false,
+            smooth_mode_incr_weight: 0.4,
+            smooth_mode_decr_weight: 0.1,
             smooth_mode_fan_step: 5,
-            smooth_mode_dwell_time: 4,
         }
     }
 }
@@ -93,21 +95,15 @@ impl Config {
         Ok(config)
     }
 
-    pub fn write_to_file(&self) -> Result<(), ConfigError> {
+    pub fn write_to_file(&self, custom_path: Option<String>) -> Result<(), ConfigError> {
         let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
-        let xdg_config_path = format!("{}/.config/veridian-controller.toml", home_dir);
+        let path = custom_path.unwrap_or(format!("{}/.config/veridian-controller.toml", home_dir));
 
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&xdg_config_path)
-            .map_err(|e| {
-                if e.kind() == ErrorKind::PermissionDenied {
-                    ConfigError::Io(e)
-                } else {
-                    ConfigError::Io(e)
-                }
-            })?;
+            .open(&path)
+            .map_err(ConfigError::Io)?;
 
         let config_string = toml::to_string(self).unwrap();
         file.write_all(config_string.as_bytes())
@@ -118,16 +114,22 @@ impl Config {
 }
 
 pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, ConfigError> {
-    let config = Config::new(custom_path);
+    let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
+    let path =
+        Some(custom_path.unwrap_or(format!("{}/.config/veridian-controller.toml", home_dir)));
+
+    let config = Config::new(path.clone());
+
     match config {
         Ok(c) => Ok(c),
         Err(err) => match err {
             ConfigError::MissingConfigFile => {
                 println!("Error: No configuration file found!");
                 println!(
-                    "Writing a default configuration file to ~/.config/veridian-controller.toml..."
+                    "Writing a default configuration file to: {:?}...",
+                    path.clone().unwrap()
                 );
-                if let Err(write_error) = Config::default().write_to_file() {
+                if let Err(write_error) = Config::default().write_to_file(path) {
                     eprintln!("Failed to write default config file: {}", write_error);
                     std::process::exit(1);
                 }
