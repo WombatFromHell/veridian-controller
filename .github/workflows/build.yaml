@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      CI: "true"
 
     steps:
       - uses: actions/checkout@v4
@@ -21,10 +23,11 @@ jobs:
       - name: Build project
         run: |
           chmod +x ./build.sh
+          export CI=${{ env.CI }}
           ./build.sh
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: veridian-controller_${{ steps.get_version.outputs.VERSION }}.AppImage
-          path: target/appimage/*.AppImage
+          name: veridian-controller_${{ steps.get_version.outputs.VERSION }}
+          path: target/appimage/*.*

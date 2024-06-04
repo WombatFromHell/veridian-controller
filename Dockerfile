@@ -10,4 +10,7 @@ RUN wget https://github.com/AppImage/AppImageKit/releases/download/continuous/ap
 WORKDIR /app
 COPY . /app/
 
+ARG CI
+ENV CI=$CI
+
 ENTRYPOINT [ "/app/entrypoint.sh" ]
