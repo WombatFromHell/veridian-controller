@@ -15,7 +15,6 @@ mod thermalmanager;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-
 pub struct Args {
     /// Path of the config file to load
     #[arg(short, long, value_name = "PATH")]
@@ -32,15 +31,20 @@ fn cleanup() -> Result<(), Box<dyn Error>> {
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
+    // ensure only one copy of the program is running at a time
     match filelock::acquire_lock() {
-        // ensure only one copy of the program is running at a time
         Ok(_) => {
             // try to disable fan control if we panic for whatever reason
-            std::panic::set_hook(Box::new(|_| {
-                let _ = cleanup().unwrap_or_else(|err| {
-                    eprintln!("Error during cleanup: {:?}", err);
-                });
-                let _ = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|panic_info| {
+                // capture the panic cause and try to pass it along
+                // capture the panic cause and try to pass it along
+                if let Some(payload) = panic_info.payload().downcast_ref::<&str>() {
+                    eprintln!("Panic: {}", payload);
+                } else if let Some(payload) = panic_info.payload().downcast_ref::<String>() {
+                    eprintln!("Panic: {}", payload);
+                } else {
+                    eprintln!("Panic: {:?}", panic_info.payload());
+                }
             }));
 
             let terminate = Arc::new(AtomicBool::new(false));
