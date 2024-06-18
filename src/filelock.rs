@@ -5,7 +5,7 @@ use std::process;
 const LOCK_FILE_PATH: &str = "/tmp/veridian-controller.lock";
 
 pub struct LockGuard {
-    lock_file: File
+    lock_file: File,
 }
 
 fn create_lock_file() -> Result<File> {
@@ -30,9 +30,7 @@ fn remove_lock_file(lock_file: &File) -> Result<()> {
 
 pub fn acquire_lock() -> Result<LockGuard> {
     let lock_file = create_lock_file()?;
-    Ok(LockGuard {
-        lock_file,
-    })
+    Ok(LockGuard { lock_file })
 }
 
 impl Drop for LockGuard {

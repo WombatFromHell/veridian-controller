@@ -6,18 +6,18 @@ use std::io::{ErrorKind, Read, Write};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
-    pub temp_thresholds: Vec<u32>,
-    pub fan_speeds: Vec<u32>,
-    pub fan_speed_floor: u32,
-    pub fan_speed_ceiling: u32,
-    pub hysteresis: u32,
+    pub temp_thresholds: Vec<u64>,
+    pub fan_speeds: Vec<u64>,
+    pub fan_speed_floor: u64,
+    pub fan_speed_ceiling: u64,
+    pub hysteresis: u64,
     pub sampling_window_size: usize,
     pub global_delay: u64,
     pub fan_dwell_time: u64,
     pub smooth_mode: bool,
     pub smooth_mode_incr_weight: f64,
     pub smooth_mode_decr_weight: f64,
-    pub smooth_mode_fan_step: u32,
+    pub smooth_mode_max_fan_step: u64,
 }
 
 #[derive(Debug)]
@@ -32,18 +32,18 @@ pub enum ConfigError {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            temp_thresholds: vec![50, 60, 70, 82, 86],
+            temp_thresholds: vec![40, 50, 60, 78, 84],
             fan_speeds: vec![46, 55, 62, 80, 100],
             fan_speed_floor: 46,
             fan_speed_ceiling: 100,
-            sampling_window_size: 5,
+            sampling_window_size: 10,
             hysteresis: 3,
             global_delay: 2,
             fan_dwell_time: 10,
-            smooth_mode: false,
-            smooth_mode_incr_weight: 0.4,
-            smooth_mode_decr_weight: 0.1,
-            smooth_mode_fan_step: 5,
+            smooth_mode: true,
+            smooth_mode_incr_weight: 1.0,
+            smooth_mode_decr_weight: 4.0,
+            smooth_mode_max_fan_step: 5,
         }
     }
 }

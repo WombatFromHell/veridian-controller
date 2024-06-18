@@ -38,7 +38,7 @@ to use it with the least amount of friction:
 
 ```toml
 # represents temperature thresholds in celsius (must be monotonically increasing)
-temp_thresholds = [50, 60, 70, 82, 86]
+temp_thresholds = [40, 50, 60, 78, 84]
 # represents target fan speed when crossing the matching temp threshold (must be monotonically increasing)
 fan_speeds =      [46, 55, 62, 80, 100]
 # the lowest fan speed that registers RPMs on the GPU fans
@@ -46,7 +46,7 @@ fan_speed_floor = 46
 # this will either be 80 or 100 depending on what gen GPU you have
 fan_speed_ceiling = 100
 # the sampling window for averaging is comprised of X samples every Y seconds
-sampling_window_size = 5
+sampling_window_size = 10
 # the insensitivity boundary to speed/temperature changes
 hysteresis = 3
 # how frequently to poll the GPU for data
@@ -54,13 +54,13 @@ global_delay = 2
 # how infrequently to send fan speed adjustments
 fan_dwell_time = 10
 # special mode that tries to smoothly adjust between the current speed and the target speed
-smooth_mode = false
-# fan speed weighting for tunable sensitivity when temperature is increasing
-smooth_mode_incr_weight = 0.4
-# fan speed weighting for tunable sensitivity when temperature is decreasing
-smooth_mode_decr_weight = 0.1
-# the maximum percentage change per fan speed command in smooth mode
-smooth_mode_fan_step = 5
+smooth_mode = true
+# increase incr_weight for less responsiveness when temperatures are increasing
+smooth_mode_incr_weight = 1.0
+# increase decr_weight for less responsiveness when temperatures are decreasing
+smooth_mode_decr_weight = 4.0
+# max amount of fan speed change per smooth mode adjustment period
+smooth_mode_max_fan_step = 5
 ```
 
 - A user-level systemd service file is included in the project directory as an
