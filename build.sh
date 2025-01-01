@@ -13,7 +13,6 @@ selinux_status() {
 	fi
 }
 
-get_version
 selinux_status
 
 RELABEL=""
