@@ -27,7 +27,7 @@ impl<'a> ThermalManager<'a> {
             last_adjustment_time: None,
             last_temp_time: None,
             current_fan_speed: 0,
-            target_fan_speed: config.fan_speed_floor as u64,
+            target_fan_speed: config.fan_speed_floor,
             smooth_mode: if config.smooth_mode { "~" } else { "" },
         }
     }
@@ -35,7 +35,7 @@ impl<'a> ThermalManager<'a> {
     pub fn update_temperature(&mut self) {
         self.current_temp = commands::get_gpu_temp();
         self.last_temp_time = Some(Instant::now());
-        self.current_fan_speed = commands::get_fan_speed() as u64;
+        self.current_fan_speed = commands::get_fan_speed();
         self.samples.push_back(self.current_temp);
         if self.samples.len() > self.config.sampling_window_size {
             self.samples.pop_front();
@@ -57,7 +57,7 @@ impl<'a> ThermalManager<'a> {
         // rearrange into descending order
         _temps
             .into_iter()
-            .zip(_speeds.into_iter())
+            .zip(_speeds)
             .rev()
             .collect::<Vec<(u64, u64)>>()
     }

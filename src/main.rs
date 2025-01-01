@@ -92,7 +92,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         });
 
-        let _ = thermal_thread.join().unwrap_or_else(|err| {
+        thermal_thread.join().unwrap_or_else(|err| {
             eprintln!("Error in thread: {:?}", err);
         });
 

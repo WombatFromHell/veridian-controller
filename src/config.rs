@@ -69,7 +69,7 @@ impl Config {
         let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
         let xdg_config_path = format!("{}/.config/veridian-controller.toml", home_dir);
 
-        let file_path = custom_path.or_else(|| Some(xdg_config_path));
+        let file_path = custom_path.or(Some(xdg_config_path));
 
         let file_path = file_path.ok_or(ConfigError::MissingConfigFile)?;
 
