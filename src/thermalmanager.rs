@@ -6,6 +6,7 @@ use crate::config::Config;
 use crate::helpers;
 
 pub struct ThermalManager<'a> {
+    gpu_id: u8,
     samples: VecDeque<u64>,
     config: &'a Config,
     temp_average: u64,
@@ -20,6 +21,7 @@ pub struct ThermalManager<'a> {
 impl<'a> ThermalManager<'a> {
     pub fn new(config: &'a Config) -> Self {
         ThermalManager {
+            gpu_id: 0,
             samples: VecDeque::with_capacity(config.sampling_window_size),
             config,
             temp_average: 0,
@@ -33,9 +35,9 @@ impl<'a> ThermalManager<'a> {
     }
 
     pub fn update_temperature(&mut self) {
-        self.current_temp = commands::get_gpu_temp();
+        self.current_temp = commands::get_gpu_temp(&self.gpu_id);
         self.last_temp_time = Some(Instant::now());
-        self.current_fan_speed = commands::get_fan_speed();
+        self.current_fan_speed = commands::get_fan_speed(&self.gpu_id);
         self.samples.push_back(self.current_temp);
         if self.samples.len() > self.config.sampling_window_size {
             self.samples.pop_front();
@@ -175,7 +177,7 @@ impl<'a> ThermalManager<'a> {
                 self.smooth_mode,
                 self.target_fan_speed
             );
-            commands::set_fan_speed(self.target_fan_speed)?;
+            commands::set_fan_speed(&self.gpu_id, self.target_fan_speed)?;
             self.last_adjustment_time = Some(Instant::now());
         }
 

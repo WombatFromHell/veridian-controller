@@ -4,8 +4,9 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
+    pub gpu_id: u8,
     pub temp_thresholds: Vec<u64>,
     pub fan_speeds: Vec<u64>,
     pub fan_speed_floor: u64,
@@ -32,6 +33,7 @@ pub enum ConfigError {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            gpu_id: 0,
             temp_thresholds: vec![40, 50, 60, 78, 84],
             fan_speeds: vec![46, 55, 62, 80, 100],
             fan_speed_floor: 46,

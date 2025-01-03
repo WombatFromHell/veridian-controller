@@ -1,8 +1,12 @@
 use std::process::{Command, Stdio};
 
-pub fn get_gpu_temp() -> u64 {
+pub fn get_gpu_temp(gpu_id: &u8) -> u64 {
     let output = Command::new("nvidia-smi")
-        .args(["--query-gpu=temperature.gpu", "--format=csv,noheader"])
+        .args([
+            format!("--id={}", gpu_id).as_str(),
+            "--query-gpu=temperature.gpu",
+            "--format=csv,noheader",
+        ])
         .output()
         .expect("Failed to execute nvidia-smi");
 
@@ -11,9 +15,13 @@ pub fn get_gpu_temp() -> u64 {
     temp_str.trim().parse::<u64>().unwrap_or(0).clamp(0, 200)
 }
 
-pub fn get_fan_speed() -> u64 {
+pub fn get_fan_speed(gpu_id: &u8) -> u64 {
     let output = Command::new("nvidia-smi")
-        .args(["--query-gpu=fan.speed", "--format=csv,noheader"])
+        .args([
+            format!("--id={}", gpu_id).as_str(),
+            "--query-gpu=fan.speed",
+            "--format=csv,noheader",
+        ])
         .output()
         .expect("Failed to execute nvidia-smi");
 
@@ -23,12 +31,12 @@ pub fn get_fan_speed() -> u64 {
     speed_str.parse::<u64>().unwrap_or(0).clamp(0, 100)
 }
 
-pub fn set_fan_control(mode: u8) -> Result<(), Box<dyn std::error::Error>> {
+pub fn set_fan_control(gpu_id: &u8, mode: u8) -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new("sudo")
         .args([
             "nvidia-settings",
             "-c",
-            "0",
+            gpu_id.to_string().as_str(),
             "-a",
             format!("GPUFanControlState={}", mode).as_str(),
         ])
@@ -48,12 +56,12 @@ pub fn set_fan_control(mode: u8) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-pub fn set_fan_speed(speed: u64) -> Result<(), Box<dyn std::error::Error>> {
+pub fn set_fan_speed(gpu_id: &u8, speed: u64) -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new("sudo")
         .args([
             "nvidia-settings",
             "-c",
-            "0",
+            gpu_id.to_string().as_str(),
             "-a",
             "GPUFanControlState=1",
             "-a",

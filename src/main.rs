@@ -2,7 +2,7 @@ use clap::Parser;
 use std::error::Error;
 use std::panic::catch_unwind;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
@@ -20,20 +20,22 @@ pub struct Args {
     file: Option<String>,
 }
 
-fn cleanup() -> Result<(), Box<dyn Error>> {
+fn cleanup(gpu_id: &u8) -> Result<(), Box<dyn Error>> {
     println!("Attempting to gracefully shutdown...");
-    commands::set_fan_control(0)?;
-
+    commands::set_fan_control(gpu_id, 0)?;
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let terminate = Arc::new(AtomicBool::new(false));
-    let terminate_clone = Arc::clone(&terminate);
+    filelock::acquire_lock()?;
 
-    let _ = filelock::acquire_lock()?;
+    let config = Box::leak(Box::new(config::load_config_from_env(args.file)?));
+    let gpu_id = config.gpu_id;
+    let global_delay = config.global_delay;
 
+    // register common signals representing 'shutdown'
     for sig in &[
         signal_hook::consts::SIGTERM,
         signal_hook::consts::SIGINT,
@@ -46,66 +48,52 @@ fn main() -> Result<(), Box<dyn Error>> {
     std::panic::set_hook(Box::new(move |panic_info| {
         eprintln!("Panic occurred: {:?}", panic_info);
         default_panic(panic_info);
-        // try to ensure cleanup is called
-        cleanup().unwrap();
+        // try to gracefully shutdown when panicing
+        if let Err(e) = cleanup(&gpu_id) {
+            eprintln!("Error during cleanup: {:?}", e);
+        }
         std::process::exit(1);
     }));
 
-    thread::spawn(move || {
-        while !terminate_clone.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(100));
-        }
-        eprintln!("Termination signal received");
-        if let Err(e) = cleanup() {
-            eprintln!("Error during cleanup: {:?}", e);
-        }
-        std::process::exit(0);
-    });
+    // preemptively lock fan control for our use
+    commands::set_fan_control(&gpu_id, 1)?;
 
-    let result = std::panic::catch_unwind(|| {
-        commands::set_fan_control(1)?;
-        let shared_config = Arc::new(Mutex::new(config::load_config_from_env(args.file)?));
+    let thermal_manager = Arc::new(RwLock::new(thermalmanager::ThermalManager::new(config)));
+    let thermal_thread = {
+        let terminate = Arc::clone(&terminate);
+        let thermal_manager_lock = Arc::clone(&thermal_manager);
 
-        let thermal_thread = thread::spawn(move || {
-            let config = shared_config.lock().unwrap();
-            let thermal_manager =
-                Arc::new(Mutex::new(thermalmanager::ThermalManager::new(&config)));
-
-            while !terminate.load(Ordering::Relaxed) {
+        thread::spawn(move || {
+            while !terminate.load(Ordering::SeqCst) {
                 let result = catch_unwind(|| {
-                    thermal_manager.lock().unwrap().update_temperature();
-                    thermal_manager
-                        .lock()
-                        .unwrap()
-                        .set_target_fan_speed()
-                        .unwrap();
-                });
-                match result {
-                    Ok(_) => {}
-                    Err(e) => {
-                        eprintln!("Error: {:?}", e);
-                        std::process::exit(1);
+                    if let Ok(mut manager) = thermal_manager_lock.write() {
+                        manager.update_temperature();
+                        if let Err(e) = manager.set_target_fan_speed() {
+                            eprintln!("Failed to set fan speed: {:?}", e);
+                        }
                     }
+                });
+
+                if let Err(e) = result {
+                    eprintln!("Error in thermal thread: {:?}", e);
+                    break;
                 }
 
-                thread::sleep(Duration::from_secs(config.global_delay));
+                // update the temperature/fan-speed every X seconds
+                thread::sleep(Duration::from_secs(global_delay));
             }
-        });
+        })
+    };
 
-        thermal_thread.join().unwrap_or_else(|err| {
-            eprintln!("Error in thread: {:?}", err);
-        });
-
-        cleanup()?;
-
-        Ok(())
-    });
-
-    match result {
-        Ok(inner_result) => inner_result,
-        Err(_) => {
-            eprintln!("Program panicked");
-            Err("Program panicked".into())
-        }
+    // watch for exit signal
+    while !terminate.load(Ordering::SeqCst) {
+        thread::sleep(Duration::from_millis(100));
     }
+    // try to gracefully shutdown
+    cleanup(&gpu_id)?;
+    if let Err(e) = thermal_thread.join() {
+        eprintln!("Thermal thread panicked: {:?}", e);
+    }
+
+    Ok(())
 }
