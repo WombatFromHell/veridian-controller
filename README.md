@@ -23,7 +23,7 @@ under the Actions section on the GitHub project page.
 Before using `veridian-controller` you'll probably want to setup your environment
 to use it with the least amount of friction:
 
-- Make a sudoers.d file under `/etc/sudoers.d/` like so:
+- Make or edit the provided sudoers file under `/etc/sudoers.d/` like so:
 
   ```bash
   sudo touch /etc/sudoers.d/99-nvidia-settings && \
@@ -34,7 +34,7 @@ to use it with the least amount of friction:
   - You'll want the content to be something like the following:
     - `yourusernamehere ALL=(ALL) NOPASSWD:/usr/bin/nvidia-settings`
 
-- Customize the `veridian-controller.toml` config file under `~/.config/veridian-controller.toml`:
+- Customize the `veridian-controller.toml` config file created after running `veridian-controller` under `~/.config/veridian-controller.toml`:
 
 ```toml
 # represents temperature thresholds in celsius (must be monotonically increasing)
