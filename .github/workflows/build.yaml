@@ -26,10 +26,9 @@ jobs:
           chmod +x ./build.sh
           export CI=${{ env.CI }}
           ./build.sh
-          cd ./target/appimage
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
           name: veridian-controller
-          path: veridian-controller_${{ steps.get_version.outputs.VERSION }}.tar.gz
+          path: ./target/appimage/veridian-controller_${{ steps.get_version.outputs.VERSION }}.tar.gz*

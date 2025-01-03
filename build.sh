@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-CI="${CI:-false}"
 IMAGE_NAME="veridian"
 
 selinux_status() {
@@ -23,7 +22,7 @@ fi
 rm -rf ./target/appimage &&
 	mkdir -p ./target
 
-docker build --build-arg CI="$CI" -t $IMAGE_NAME .
+docker build -t $IMAGE_NAME .
 docker run --rm \
 	-v "./target:/app/target${RELABEL}" \
 	--name $IMAGE_NAME $IMAGE_NAME
