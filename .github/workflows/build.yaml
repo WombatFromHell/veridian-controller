@@ -1,9 +1,12 @@
 name: Build and Upload Binary
 
 on:
-  push:
-    branches:
-      - main # only trigger on merges
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "main build"
+        required: true
+        default: "main"
 
 jobs:
   build:
