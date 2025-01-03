@@ -32,5 +32,5 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: veridian-controller_${{ steps.get_version.outputs.VERSION }}
-          path: target/appimage/*.*
+          name: veridian-controller
+          path: target/appimage/veridian-controller_${{ steps.get_version.outputs.VERSION }}.tar.gz
