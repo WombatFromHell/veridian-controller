@@ -12,6 +12,9 @@ mod filelock;
 mod helpers;
 mod thermalmanager;
 
+#[cfg(test)]
+mod thermalmanager_test;
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {

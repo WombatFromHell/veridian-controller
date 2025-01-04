@@ -6,16 +6,16 @@ use crate::config::Config;
 use crate::helpers;
 
 pub struct ThermalManager {
-    gpu_id: u8,
-    samples: VecDeque<u64>,
-    config: Config,
-    temp_average: u64,
-    current_temp: u64,
-    last_adjustment_time: Option<Instant>,
-    last_temp_time: Option<Instant>,
-    current_fan_speed: u64,
-    target_fan_speed: u64,
-    smooth_mode: String,
+    pub gpu_id: u8,
+    pub samples: VecDeque<u64>,
+    pub config: Config,
+    pub temp_average: u64,
+    pub current_temp: u64,
+    pub last_adjustment_time: Option<Instant>,
+    pub last_temp_time: Option<Instant>,
+    pub current_fan_speed: u64,
+    pub target_fan_speed: u64,
+    pub smooth_mode: String,
 }
 
 impl ThermalManager {
@@ -111,7 +111,7 @@ impl ThermalManager {
         false
     }
 
-    fn get_smooth_speed(&mut self, thresholds: Vec<(u64, u64)>) -> u64 {
+    pub fn get_smooth_speed(&mut self, thresholds: Vec<(u64, u64)>) -> u64 {
         let base_speed = self.select_nearest_fan_speed(thresholds);
 
         let fan_speed_range = (self.config.fan_speed_ceiling - self.config.fan_speed_floor) as f64;
@@ -153,7 +153,7 @@ impl ThermalManager {
         smooth_speed.clamp(self.config.fan_speed_floor, self.config.fan_speed_ceiling)
     }
 
-    fn get_target_fan_speed(&mut self) -> u64 {
+    pub fn get_target_fan_speed(&mut self) -> u64 {
         let thresholds = self.generate_thresholds_and_speeds();
 
         if self.config.smooth_mode {
@@ -186,57 +186,5 @@ impl ThermalManager {
         }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_target_fan_speed() {
-        let _config = Config::default();
-        let mut manager = ThermalManager::new(&_config);
-        // start at index 2
-        manager.temp_average = 74;
-        manager.get_target_fan_speed();
-        assert_eq!(manager.target_fan_speed, 62);
-        // transition to index 4
-        manager.temp_average = 89;
-        manager.get_target_fan_speed();
-        assert_eq!(manager.target_fan_speed, 100);
-        // transition to index 0
-        manager.temp_average = 53;
-        manager.get_target_fan_speed();
-        assert_eq!(manager.target_fan_speed, 46);
-    }
-
-    #[test]
-    fn test_get_smooth_speed() {
-        let _config = Config::default();
-        let mut manager = ThermalManager::new(&_config);
-        let thresholds = manager.generate_thresholds_and_speeds();
-        manager.last_temp_time = Some(Instant::now());
-        // start at index 0
-        manager.current_temp = 59;
-        manager.temp_average = 58;
-        manager.current_fan_speed = 46;
-        manager.target_fan_speed = 46;
-        let result = manager.get_smooth_speed(thresholds.clone());
-        assert_eq!(result, 46);
-        // transition to index 3 (smoothed)
-        manager.current_temp = 73;
-        manager.temp_average = 74;
-        manager.current_fan_speed = 55;
-        manager.target_fan_speed = 62;
-        let result = manager.get_smooth_speed(thresholds.clone());
-        assert_eq!(result, 65);
-        // transition to index 4 (smoothed)
-        manager.current_temp = 86;
-        manager.temp_average = 87;
-        manager.current_fan_speed = 55;
-        manager.target_fan_speed = 80;
-        let result = manager.get_smooth_speed(thresholds.clone());
-        assert_eq!(result, 83);
     }
 }
