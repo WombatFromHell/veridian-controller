@@ -1,11 +1,12 @@
 [Unit]
 Description=Veridian Controller Fan Monitoring Service
-Wants=display-manager.service
-After=display-manager.service
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/veridian-controller -f ~/.config/veridian-controller.toml
+ExecStart=%h/.local/bin/veridian-controller
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=10
