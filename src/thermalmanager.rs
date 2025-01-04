@@ -5,32 +5,36 @@ use crate::commands;
 use crate::config::Config;
 use crate::helpers;
 
-pub struct ThermalManager<'a> {
+pub struct ThermalManager {
     gpu_id: u8,
     samples: VecDeque<u64>,
-    config: &'a Config,
+    config: Config,
     temp_average: u64,
     current_temp: u64,
     last_adjustment_time: Option<Instant>,
     last_temp_time: Option<Instant>,
     current_fan_speed: u64,
     target_fan_speed: u64,
-    smooth_mode: &'a str,
+    smooth_mode: String,
 }
 
-impl<'a> ThermalManager<'a> {
-    pub fn new(config: &'a Config) -> Self {
+impl ThermalManager {
+    pub fn new(config: Config) -> Self {
         ThermalManager {
             gpu_id: 0,
             samples: VecDeque::with_capacity(config.sampling_window_size),
-            config,
+            config: config.clone(),
             temp_average: 0,
             current_temp: 0,
             last_adjustment_time: None,
             last_temp_time: None,
             current_fan_speed: 0,
             target_fan_speed: config.fan_speed_floor,
-            smooth_mode: if config.smooth_mode { "~" } else { "" },
+            smooth_mode: if config.smooth_mode {
+                "~".to_string()
+            } else {
+                "".to_string()
+            },
         }
     }
 

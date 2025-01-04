@@ -31,9 +31,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let terminate = Arc::new(AtomicBool::new(false));
     filelock::acquire_lock()?;
 
-    let config = Box::leak(Box::new(config::load_config_from_env(args.file)?));
-    let gpu_id = config.gpu_id;
-    let global_delay = config.global_delay;
+    let config = Arc::new(RwLock::new(config::load_config_from_env(args.file)?));
+    let config_guard = config.read().unwrap();
+    let gpu_id = config_guard.gpu_id;
+    let global_delay = config_guard.global_delay;
 
     // register common signals representing 'shutdown'
     for sig in &[
@@ -58,23 +59,35 @@ fn main() -> Result<(), Box<dyn Error>> {
     // preemptively lock fan control for our use
     commands::set_fan_control(&gpu_id, 1)?;
 
-    let thermal_manager = Arc::new(RwLock::new(thermalmanager::ThermalManager::new(config)));
+    let thermal_manager = {
+        let thermal_guard = match config.read() {
+            Ok(thermal_guard) => thermal_guard,
+            Err(err) => {
+                eprintln!("Thermal config lock poisoned: {}", err);
+                std::process::exit(1);
+            }
+        };
+
+        Arc::new(RwLock::new(thermalmanager::ThermalManager::new(
+            thermal_guard.clone(),
+        )))
+    };
+
     let thermal_thread = {
         let terminate = Arc::clone(&terminate);
         let thermal_manager_lock = Arc::clone(&thermal_manager);
 
         thread::spawn(move || {
             while !terminate.load(Ordering::SeqCst) {
-                let result = catch_unwind(|| {
+                if let Err(e) = catch_unwind(|| {
                     if let Ok(mut manager) = thermal_manager_lock.write() {
                         manager.update_temperature();
                         if let Err(e) = manager.set_target_fan_speed() {
                             eprintln!("Failed to set fan speed: {:?}", e);
+                            std::process::exit(1);
                         }
                     }
-                });
-
-                if let Err(e) = result {
+                }) {
                     eprintln!("Error in thermal thread: {:?}", e);
                     break;
                 }
