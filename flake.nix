@@ -21,7 +21,11 @@
     nixpkgs,
     flake-utils,
     naersk,
-  }:
+  }: let
+    overlay = final: prev: {
+      veridian-controller = self.packages.${prev.system}.veridian-controller;
+    };
+  in
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs {inherit system;};
       naersk' = pkgs.callPackage naersk {};
@@ -35,21 +39,22 @@
         default = self.packages.${system}.veridian-controller;
       };
 
-      overlays.default = final: prev: {
-        veridian-controller = self.packages.${prev.system}.veridian-controller;
-      };
-
       apps.default = flake-utils.lib.mkApp {
         drv = self.packages.${system}.default;
       };
     })
     // {
+      overlays.default = overlay;
+
       nixosModules.default = {
         config,
+        lib,
         pkgs,
         ...
       }: {
-        nixpkgs.overlays = [self.overlays.default];
+        config = {
+          nixpkgs.overlays = [overlay];
+        };
       };
     };
 }
