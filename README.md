@@ -17,8 +17,66 @@ open-source program.**
 
 ---
 
+## Nix/NixOS Install Instructions
+
+```nix
+# Your flake.nix should look something like this
+{
+  description = "My configuration flake";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    veridian.url = "github:WombatFromHell/veridian-controller";
+  };
+
+  outputs = { nixpkgs, veridian, ... }: {
+    nixosConfigurations = {
+      hostname = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          ./configuration.nix # Your system configuration.
+
+          veridian.nixosModules.default # ADD OUR DEFAULT MODULE
+        ];
+
+        # add a sudoers rule for 'nvidia-settings' so you can use fan control support
+        security.sudo = {
+          extraRules = [
+            {
+              # you can use a group like 'wheel' for admin access if you like
+              # groups = ["wheel"];
+              users = ["<change this to your username>"];
+              commands = [
+                {
+                  command = "${pkgs.linuxPackages.nvidia_x11.bin}/bin/nvidia-settings";
+                  options = ["NOPASSWD"];
+                }
+              ];
+            }
+          ];
+        };
+
+        # somewhere else in your config...
+        environment.systemPackages = with pkgs; [
+          veridian-controller
+        ];
+        # or, if you're using home-manager...
+        home.packages = with pkgs; [
+          veridian-controller
+        ];
+      };
+    };
+  };
+}
+```
+
+---
+
+## Non-Nix Install Instructions
+
 Now, with that out of the way, you can find release binaries as AppImage files
-under the Actions section on the GitHub project page.
+under the Actions section on the GitHub project page or versioned releases on
+the Releases page.
 
 Before using `veridian-controller` you'll probably want to setup your environment
 to use it with the least amount of friction:
@@ -31,8 +89,13 @@ to use it with the least amount of friction:
   sudoedit /etc/sudoers.d/99-nvidia-settings
   ```
 
-  - You'll want the content to be something like the following:
-    - `yourusernamehere ALL=(ALL) NOPASSWD:/usr/bin/nvidia-settings`
+- You'll want the content to be something like the following:
+
+```text
+yourusernamehere ALL=(ALL) NOPASSWD:/usr/bin/nvidia-settings
+# alternatively you can use a group name like 'wheel'
+# %yourgroupnamehere ALL=(ALL) NOPASSWD:/usr/bin/nvidia-settings
+```
 
 - Customize the `veridian-controller.toml` config file created after running `veridian-controller` under `~/.config/veridian-controller.toml`:
 
@@ -75,3 +138,7 @@ smooth_mode_max_fan_step = 5
   cp -f veridian-controller.service ~/.config/systemd/user && \
   systemctl --user daemon-reload && systemctl --user enable --now veridian-controller
   ```
+
+```
+
+```
