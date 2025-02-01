@@ -19,13 +19,21 @@ open-source program.**
 
 ## Nix/NixOS Install Instructions
 
+If you want to use the cachix build cache you can run the following command
+to add the substituter and public key to your trusted-substituters list on NixOS:
+
+`sudo nix flake check github:WombatFromHell/veridian-controller`
+
+Then integrate this repo as a flake input in your flake.nix like so:
+
 ```nix
 # Your flake.nix should look something like this
 {
-  description = "My configuration flake";
+  description = "My NixOS configuration flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable"; # if using standalone
     veridian.url = "github:WombatFromHell/veridian-controller";
   };
 
@@ -34,7 +42,7 @@ open-source program.**
       hostname = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
-          ./configuration.nix # Your system configuration.
+          ./configuration.nix # Your config with 'hardware.nvidia' enabled
 
           veridian.nixosModules.default # ADD OUR DEFAULT MODULE
         ];
@@ -48,7 +56,7 @@ open-source program.**
               users = ["<change this to your username>"];
               commands = [
                 {
-                  command = "${pkgs.linuxPackages.nvidia_x11.bin}/bin/nvidia-settings";
+                  command = "${config.hardware.nvidia.package.bin}/bin/nvidia-settings";
                   options = ["NOPASSWD"];
                 }
               ];
