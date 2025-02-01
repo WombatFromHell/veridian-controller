@@ -1,0 +1,20 @@
+name: "Nix Build and Cache"
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "main build"
+        required: true
+        default: "main"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+      - uses: cachix/cachix-action@v15
+        with:
+          name: wombatfromhell
+          authToken: "${{ secrets.CACHIX_TOKEN }}"
+      - run: nix build . --print-out-paths
