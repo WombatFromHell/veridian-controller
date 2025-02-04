@@ -49,29 +49,30 @@ Then integrate this repo as a flake input in your flake.nix like so:
 
         # add a sudoers rule for 'nvidia-settings' so you can use fan control support
         security.sudo = {
+          # required to prevent nixos sudo from silently failing unit escalation
+          extraConfig = ''
+            Defaults !requiretty
+          '';
           extraRules = [
             {
-              # you can use a group like 'wheel' for admin access if you like
+              # alternatively an admin group can be used here but a specific user is safer
               # groups = ["wheel"];
-              users = ["<change this to your username>"];
+              users = ["yourusernamehere"];
+              # target the currently installed 'nvidia-settings'
               commands = [
                 {
-                  command = "${config.hardware.nvidia.package.bin}/bin/nvidia-settings";
-                  options = ["NOPASSWD"];
+                  command = "${config.hardware.nvidia.package.settings}/bin/nvidia-settings";
+                  options = ["NOPASSWD" "SETENV"];
                 }
               ];
             }
           ];
         };
 
-        # somewhere else in your config...
-        environment.systemPackages = with pkgs; [
-          veridian-controller
-        ];
-        # or, if you're using home-manager...
-        home.packages = with pkgs; [
-          veridian-controller
-        ];
+        # somewhere else in your home-manager config...
+        # rename 'unit-example.nix' to something like 'veridian.nix'
+        imports = [ ./veridian.nix ];
+        veridian-controller.enable = true;
       };
     };
   };
