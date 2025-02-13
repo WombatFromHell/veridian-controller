@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use nix::unistd::Uid;
 use std::env;
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -57,6 +58,7 @@ impl fmt::Display for ConfigError {
             ConfigError::Toml(err) => write!(f, "TOML parse error: {}", err),
             ConfigError::MissingHomeDir => write!(f, "Missing HOME directory"),
             ConfigError::MissingConfigFile => write!(f, "Missing configuration file"),
+            ConfigError::RootRequiresCustomPath => write!(f, "Must provide a valid config file path"),
             ConfigError::InvalidArrayFormat => write!(
                 f,
                 "Temperature and Fan Speed arrays must be the same length"
@@ -68,12 +70,23 @@ impl std::error::Error for ConfigError {}
 
 impl Config {
     pub fn new(custom_path: Option<String>) -> Result<Self, ConfigError> {
-        let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
-        let xdg_config_path = format!("{}/.config/veridian-controller.toml", home_dir);
+        let file_path: String;
 
-        let file_path = custom_path.or(Some(xdg_config_path));
+        if Uid::is_root(getuid()) {
+            // Running as root
+            if let Some(path) = custom_path {
+                file_path = path;
+            } else {
+                return Err(ConfigError::RootRequiresCustomPath);
+            }
+        } else {
+            // Not root, proceed with normal logic
+            let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
+            let xdg_config_path = format!("{}/.config/veridian-controller.toml", home_dir);
 
-        let file_path = file_path.ok_or(ConfigError::MissingConfigFile)?;
+            let file_path_option = custom_path.or(Some(xdg_config_path));
+            file_path = file_path_option.ok_or(ConfigError::MissingConfigFile)?;
+        }
 
         let mut file = File::open(&file_path).map_err(|e| {
             if e.kind() == ErrorKind::NotFound {
