@@ -1,4 +1,4 @@
-FROM rust:slim-bullseye
+FROM docker.io/library/rust:slim-bullseye
 
 RUN cargo install cargo-appimage
 RUN apt-get update && apt-get install -y --no-install-recommends file wget ca-certificates
