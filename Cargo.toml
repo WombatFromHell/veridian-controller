@@ -4,8 +4,9 @@ version = "0.2.6"
 edition = "2021"
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-clap = { version = "4.5.4", features = ["derive"] }
+serde = { version = "1.0.217", features = ["derive"] }
+clap = { version = "4.5.29", features = ["derive"] }
 signal-hook = { version = "0.3.17", features = ["extended-siginfo"] }
-toml = "0.8.13"
+toml = "0.8.20"
 chrono = "0.4.38"
+nix = "0.29.0"
