@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use nix::unistd::Uid;
+use nix::unistd::Uid::{is_root, getuid};
 use std::env;
 use std::fmt;
 use std::fs::{File, OpenOptions};

@@ -26,7 +26,7 @@
       system: let
         pkgs = import nixpkgs {inherit system;};
         naersk' = pkgs.callPackage naersk {};
-        overrides = pkgs.formats.toml.parse (builtins.readFile ./rust-toolchain.toml);
+        overrides = builtins.fromTOML (builtins.readFile ./rust-toolchain.toml);
         rustcVersion = overrides.toolchain.channel;
         llvmPackagesLatest = pkgs.llvmPackages_latest;
         libPath = with pkgs;
@@ -37,6 +37,7 @@
           # Includes normal include path
           (builtins.map (a: "-I${a}/include") [
             # add dev libraries here (e.g. pkgs.libvmi.dev)
+            pkgs.glibc.dev
           ])
           # Includes with special directory paths
           ++ [
@@ -67,7 +68,7 @@
           shellHook = ''
             export PATH=$PATH:$CARGO_HOME/bin
             export PATH=$PATH:$RUSTUP_HOME/toolchains/$RUSTC_VERSION-x86_64-unknown-linux-gnu/bin/
-          ''; # shellHook is optional but kept for path extension as in original shell.nix
+          '';
           RUSTFLAGS = builtins.map (a: "-L ${a}/lib") [
             # add libraries here (e.g. pkgs.libvmi)
           ];
