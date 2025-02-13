@@ -1,5 +1,5 @@
+use nix::unistd::{getuid, Uid};
 use serde::{Deserialize, Serialize};
-use nix::unistd::Uid::{is_root, getuid};
 use std::env;
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -28,6 +28,7 @@ pub enum ConfigError {
     Toml(toml::de::Error),
     MissingHomeDir,
     MissingConfigFile,
+    RootRequiresCustomPath,
     InvalidArrayFormat,
 }
 
@@ -58,7 +59,9 @@ impl fmt::Display for ConfigError {
             ConfigError::Toml(err) => write!(f, "TOML parse error: {}", err),
             ConfigError::MissingHomeDir => write!(f, "Missing HOME directory"),
             ConfigError::MissingConfigFile => write!(f, "Missing configuration file"),
-            ConfigError::RootRequiresCustomPath => write!(f, "Must provide a valid config file path"),
+            ConfigError::RootRequiresCustomPath => {
+                write!(f, "Must provide a valid config file path")
+            }
             ConfigError::InvalidArrayFormat => write!(
                 f,
                 "Temperature and Fan Speed arrays must be the same length"
@@ -160,6 +163,10 @@ pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, Confi
             }
             ConfigError::MissingHomeDir => {
                 println!("Error: HOME environment variable not set!");
+                std::process::exit(1);
+            }
+            ConfigError::RootRequiresCustomPath => {
+                println!("Error: Must provide a valid config file path!");
                 std::process::exit(1);
             }
             ConfigError::InvalidArrayFormat => {
