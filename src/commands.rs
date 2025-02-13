@@ -1,3 +1,4 @@
+use nix::unistd::{getuid, Uid};
 use std::process::{Command, Stdio};
 
 pub fn get_gpu_temp(gpu_id: &u8) -> u64 {
@@ -32,9 +33,18 @@ pub fn get_fan_speed(gpu_id: &u8) -> u64 {
 }
 
 pub fn set_fan_control(gpu_id: &u8, mode: u8) -> Result<(), Box<dyn std::error::Error>> {
-    let output = Command::new("sudo")
+    let is_root = Uid::is_root(getuid());
+
+    let mut command = if is_root {
+        Command::new("nvidia-settings")
+    } else {
+        let mut cmd = Command::new("sudo");
+        cmd.arg("nvidia-settings");
+        cmd
+    };
+
+    let output = command
         .args([
-            "nvidia-settings",
             "-c",
             gpu_id.to_string().as_str(),
             "-a",
@@ -57,9 +67,16 @@ pub fn set_fan_control(gpu_id: &u8, mode: u8) -> Result<(), Box<dyn std::error::
 }
 
 pub fn set_fan_speed(gpu_id: &u8, speed: u64) -> Result<(), Box<dyn std::error::Error>> {
-    let output = Command::new("sudo")
+    let is_root = Uid::is_root(getuid());
+
+    let mut command = if is_root {
+        Command::new("nvidia-settings")
+    } else {
+        Command::new("sudo")
+    };
+
+    let output = command
         .args([
-            "nvidia-settings",
             "-c",
             gpu_id.to_string().as_str(),
             "-a",
