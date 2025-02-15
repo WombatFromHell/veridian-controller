@@ -4,6 +4,7 @@ use std::env;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
@@ -28,7 +29,6 @@ pub enum ConfigError {
     Toml(toml::de::Error),
     MissingHomeDir,
     MissingConfigFile,
-    RootRequiresCustomPath,
     InvalidArrayFormat,
 }
 
@@ -59,9 +59,6 @@ impl fmt::Display for ConfigError {
             ConfigError::Toml(err) => write!(f, "TOML parse error: {}", err),
             ConfigError::MissingHomeDir => write!(f, "Missing HOME directory"),
             ConfigError::MissingConfigFile => write!(f, "Missing configuration file"),
-            ConfigError::RootRequiresCustomPath => {
-                write!(f, "Must provide a valid config file path")
-            }
             ConfigError::InvalidArrayFormat => write!(
                 f,
                 "Temperature and Fan Speed arrays must be the same length"
@@ -71,25 +68,48 @@ impl fmt::Display for ConfigError {
 }
 impl std::error::Error for ConfigError {}
 
+pub fn resolve_path(path: &str) -> Result<PathBuf, ConfigError> {
+    let path = Path::new(path);
+
+    // If the path is already absolute, use it as-is
+    if path.is_absolute() {
+        path.canonicalize().map_err(|e| {
+            eprintln!("Failed to canonicalize path '{}': {}", path.display(), e);
+            ConfigError::Io(e)
+        })
+    } else {
+        // For relative paths, resolve them relative to the current directory
+        let current_dir = std::env::current_dir().map_err(|e| {
+            eprintln!("Failed to get current directory: {}", e);
+            ConfigError::Io(e)
+        })?;
+        let full_path = current_dir.join(path);
+        full_path.canonicalize().map_err(|e| {
+            eprintln!(
+                "Failed to canonicalize path '{}': {}",
+                full_path.display(),
+                e
+            );
+            ConfigError::Io(e)
+        })
+    }
+}
+
+pub fn get_config_path(custom_path: Option<String>) -> Result<PathBuf, ConfigError> {
+    let path_str = if Uid::is_root(getuid()) {
+        custom_path.unwrap_or_else(|| "/etc/veridian-controller.toml".to_string())
+    } else {
+        let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
+        custom_path.unwrap_or(format!("{}/.config/veridian-controller.toml", home_dir))
+    };
+
+    // Use a fallback just in case the typical paths don't work
+    resolve_path(&path_str).or_else(|_| resolve_path("/tmp/veridian-controller.toml"))
+}
+
 impl Config {
-    pub fn new(custom_path: Option<String>) -> Result<Self, ConfigError> {
-        let file_path: String;
-
-        if Uid::is_root(getuid()) {
-            // Running as root
-            if let Some(path) = custom_path {
-                file_path = path;
-            } else {
-                return Err(ConfigError::RootRequiresCustomPath);
-            }
-        } else {
-            // Not root, proceed with normal logic
-            let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
-            let xdg_config_path = format!("{}/.config/veridian-controller.toml", home_dir);
-
-            let file_path_option = custom_path.or(Some(xdg_config_path));
-            file_path = file_path_option.ok_or(ConfigError::MissingConfigFile)?;
-        }
+    pub fn new(custom_path: Option<String>) -> Result<Config, ConfigError> {
+        let file_path = get_config_path(custom_path)?;
 
         let mut file = File::open(&file_path).map_err(|e| {
             if e.kind() == ErrorKind::NotFound {
@@ -98,7 +118,7 @@ impl Config {
                 ConfigError::Io(e)
             }
         })?;
-        println!("Using config file: {}", file_path);
+        println!("Using config file: {}", file_path.display());
 
         let mut contents = String::new();
         file.read_to_string(&mut contents)
@@ -114,13 +134,12 @@ impl Config {
     }
 
     pub fn write_to_file(&self, custom_path: Option<String>) -> Result<(), ConfigError> {
-        let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
-        let path = custom_path.unwrap_or(format!("{}/.config/veridian-controller.toml", home_dir));
+        let file_path = get_config_path(custom_path)?;
 
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&path)
+            .open(&file_path)
             .map_err(ConfigError::Io)?;
 
         let config_string = toml::to_string(self).unwrap();
@@ -132,22 +151,18 @@ impl Config {
 }
 
 pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, ConfigError> {
-    let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
-    let path =
-        Some(custom_path.unwrap_or(format!("{}/.config/veridian-controller.toml", home_dir)));
-
-    let config = Config::new(path.clone());
+    let _write_path = custom_path.clone();
+    let _path = get_config_path(custom_path)?;
+    let config_path = _path.to_str().map(|s| s.to_string());
+    let config = Config::new(config_path);
 
     match config {
         Ok(c) => Ok(c),
         Err(err) => match err {
             ConfigError::MissingConfigFile => {
                 println!("Error: No configuration file found!");
-                println!(
-                    "Writing a default configuration file to: {:?}...",
-                    path.clone().unwrap()
-                );
-                if let Err(write_error) = Config::default().write_to_file(path) {
+                println!("Writing a default configuration file to: {:?}...", _path);
+                if let Err(write_error) = Config::default().write_to_file(_write_path) {
                     eprintln!("Failed to write default config file: {}", write_error);
                     std::process::exit(1);
                 }
@@ -163,10 +178,6 @@ pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, Confi
             }
             ConfigError::MissingHomeDir => {
                 println!("Error: HOME environment variable not set!");
-                std::process::exit(1);
-            }
-            ConfigError::RootRequiresCustomPath => {
-                println!("Error: Must provide a valid config file path!");
                 std::process::exit(1);
             }
             ConfigError::InvalidArrayFormat => {
