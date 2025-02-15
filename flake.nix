@@ -26,16 +26,16 @@
       system: let
         pkgs = import nixpkgs {inherit system;};
         naersk' = pkgs.callPackage naersk {};
-        cargoToml = builtins.readFile ./Cargo.toml;
-        versionMatch = builtins.match ''.*version[[:space:]]*=[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)".*'' cargoToml;
+        version = pkgs.lib.strings.removeSuffix "\n" (builtins.readFile (pkgs.runCommand "get-version" {
+            nativeBuildInputs = [pkgs.remarshal pkgs.jq];
+          } ''
+            toml2json ${./Cargo.toml} | jq -r '.package.version' > $out
+          ''));
       in {
         packages = {
           veridian-controller = naersk'.buildPackage {
             pname = "veridian-controller";
-            version =
-              if versionMatch != null
-              then builtins.elemAt versionMatch 0
-              else throw "Could not extract version from Cargo.toml. Make sure it contains a line like `version = \"0.1.0\"`.";
+            inherit version;
             src = ./.;
           };
           default = self.packages.${system}.veridian-controller;
