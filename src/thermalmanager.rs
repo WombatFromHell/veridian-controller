@@ -3,7 +3,12 @@ use std::time::{Duration, Instant};
 
 use crate::commands;
 use crate::config::Config;
-use crate::helpers;
+use chrono::prelude::*;
+
+pub fn get_cur_time() -> String {
+    let dt: DateTime<Local> = Local::now();
+    dt.format("%Y-%m-%d %H:%M:%S").to_string()
+}
 
 pub struct ThermalManager {
     pub gpu_id: u8,
@@ -175,7 +180,7 @@ impl ThermalManager {
         if self.current_fan_speed != self.target_fan_speed {
             println!(
                 "[{}] Veridian transitioning state: {} C => {} %A -> {}{} %T",
-                helpers::get_cur_time(),
+                get_cur_time(),
                 self.temp_average,
                 self.current_fan_speed,
                 self.smooth_mode,

@@ -9,7 +9,6 @@ use std::time::Duration;
 mod commands;
 mod config;
 mod filelock;
-mod helpers;
 mod thermalmanager;
 
 #[cfg(test)]
