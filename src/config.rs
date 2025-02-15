@@ -29,6 +29,7 @@ pub enum ConfigError {
     Toml(toml::de::Error),
     MissingHomeDir,
     MissingConfigFile,
+    InvalidDirectory,
     InvalidArrayFormat,
 }
 
@@ -59,6 +60,7 @@ impl fmt::Display for ConfigError {
             ConfigError::Toml(err) => write!(f, "TOML parse error: {}", err),
             ConfigError::MissingHomeDir => write!(f, "Missing HOME directory"),
             ConfigError::MissingConfigFile => write!(f, "Missing configuration file"),
+            ConfigError::InvalidDirectory => write!(f, "Invalid directory"),
             ConfigError::InvalidArrayFormat => write!(
                 f,
                 "Temperature and Fan Speed arrays must be the same length"
@@ -68,31 +70,57 @@ impl fmt::Display for ConfigError {
 }
 impl std::error::Error for ConfigError {}
 
+fn expand_tilde(path: &str) -> Result<PathBuf, ConfigError> {
+    if path.starts_with("~") {
+        // Try to get the home directory
+        let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
+        // Strip the `~` and join with the home directory
+        let stripped_path = path.trim_start_matches('~');
+        Ok(PathBuf::from(home_dir).join(stripped_path))
+    } else {
+        // If the path doesn't start with `~`, return it as-is
+        Ok(PathBuf::from(path))
+    }
+}
+
 pub fn resolve_path(path: &str) -> Result<PathBuf, ConfigError> {
-    let path = Path::new(path);
+    let path = expand_tilde(path)?;
+    let path = Path::new(&path);
 
     // If the path is already absolute, use it as-is
-    if path.is_absolute() {
-        path.canonicalize().map_err(|e| {
-            eprintln!("Failed to canonicalize path '{}': {}", path.display(), e);
-            ConfigError::Io(e)
-        })
+    let resolved_path = if path.is_absolute() {
+        path.to_path_buf()
     } else {
         // For relative paths, resolve them relative to the current directory
-        let current_dir = std::env::current_dir().map_err(|e| {
-            eprintln!("Failed to get current directory: {}", e);
+        let current_dir = env::current_dir().map_err(|_| ConfigError::InvalidDirectory)?;
+        current_dir.join(path)
+    };
+
+    // If the file doesn't exist, create it (touch it)
+    if !resolved_path.exists() {
+        // Create the parent directory if it doesn't exist
+        if let Some(parent) = resolved_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    eprintln!("Failed to create directory '{}': {}", parent.display(), e);
+                    ConfigError::Io(e)
+                })?;
+            }
+        }
+        File::create(&resolved_path).map_err(|e| {
+            eprintln!("Failed to create file '{}': {}", resolved_path.display(), e);
             ConfigError::Io(e)
         })?;
-        let full_path = current_dir.join(path);
-        full_path.canonicalize().map_err(|e| {
-            eprintln!(
-                "Failed to canonicalize path '{}': {}",
-                full_path.display(),
-                e
-            );
-            ConfigError::Io(e)
-        })
     }
+
+    resolved_path.canonicalize().map_err(|e| {
+        eprintln!(
+            "Failed to canonicalize path '{}': {}",
+            resolved_path.display(),
+            e
+        );
+        ConfigError::Io(e)
+    })
 }
 
 pub fn get_config_path(custom_path: Option<String>) -> Result<PathBuf, ConfigError> {
@@ -138,7 +166,8 @@ impl Config {
 
         let mut file = OpenOptions::new()
             .write(true)
-            .create_new(true)
+            .create(true)
+            .truncate(true)
             .open(&file_path)
             .map_err(ConfigError::Io)?;
 
@@ -172,12 +201,21 @@ pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, Confi
                 println!("Error: {}", err);
                 std::process::exit(1);
             }
-            ConfigError::Toml(err) => {
-                println!("Error: {}", err);
-                std::process::exit(1);
+            ConfigError::Toml(_) => {
+                println!("Error: Invalid configuration file found!");
+                println!("Writing a default configuration file to: {:?}...", _path);
+                if let Err(write_error) = Config::default().write_to_file(_write_path) {
+                    eprintln!("Failed to write default config file: {}", write_error);
+                    std::process::exit(1);
+                }
+                Ok(Config::default())
             }
             ConfigError::MissingHomeDir => {
                 println!("Error: HOME environment variable not set!");
+                std::process::exit(1);
+            }
+            ConfigError::InvalidDirectory => {
+                println!("Error: Invalid directory!");
                 std::process::exit(1);
             }
             ConfigError::InvalidArrayFormat => {
