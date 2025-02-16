@@ -70,15 +70,15 @@ impl fmt::Display for ConfigError {
 }
 impl std::error::Error for ConfigError {}
 
-fn expand_tilde(path: &str) -> Result<PathBuf, ConfigError> {
-    if path.starts_with("~") {
-        // Try to get the home directory
+pub fn expand_tilde(path: &str) -> Result<PathBuf, ConfigError> {
+    if path.starts_with("~/") {
         let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
-        // Strip the `~` and join with the home directory
-        let stripped_path = path.trim_start_matches('~');
-        Ok(PathBuf::from(home_dir).join(stripped_path))
+        let stripped_path = &path
+            .strip_prefix("~/")
+            .ok_or("Path does not start with '~/'!");
+        Ok(PathBuf::from(home_dir).join(stripped_path.unwrap()))
     } else {
-        // If the path doesn't start with `~`, return it as-is
+        // If the path doesn't start with `~/`, return it as-is
         Ok(PathBuf::from(path))
     }
 }

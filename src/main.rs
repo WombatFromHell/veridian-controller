@@ -12,6 +12,8 @@ mod filelock;
 mod thermalmanager;
 
 #[cfg(test)]
+mod config_test;
+#[cfg(test)]
 mod thermalmanager_test;
 
 #[derive(Parser, Debug)]

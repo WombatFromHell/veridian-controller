@@ -1,4 +1,5 @@
 target
 result
 .direnv
+test_config.toml
 veridian-controller.toml
