@@ -42,7 +42,7 @@ impl Default for Config {
             fan_speed_floor: 46,
             fan_speed_ceiling: 100,
             sampling_window_size: 10,
-            hysteresis: 2,
+            hysteresis: 3,
             global_delay: 2,
             fan_dwell_time: 10,
             smooth_mode: true,
