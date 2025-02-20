@@ -147,12 +147,10 @@ impl ThermalManager {
 
                 let change = target_speed - current_speed;
                 let max_step = self.config.smooth_mode_max_fan_step as f64;
-                let limited_change = {
-                    if change > 0.0 && max_step > 0.0 {
-                        change.clamp(0.0, max_step)
-                    } else {
-                        change
-                    }
+                let limited_change = if change > 0.0 && max_step > 0.0 {
+                    change.clamp(0.0, max_step)
+                } else {
+                    change.clamp(-max_step, 0.0)
                 };
 
                 let new_speed = {
@@ -166,8 +164,28 @@ impl ThermalManager {
 
                 new_speed as u64
             }
-            Some(((_, speed), None)) => {
-                speed.clamp(self.config.fan_speed_floor, self.config.fan_speed_ceiling)
+            Some(((_, lower_speed), None)) => {
+                let target_speed = lower_speed as f64;
+                let current_speed = self.current_fan_speed as f64;
+
+                let change = target_speed - current_speed;
+                let max_step = self.config.smooth_mode_max_fan_step as f64;
+                let limited_change = if change > 0.0 && max_step > 0.0 {
+                    change.clamp(0.0, max_step)
+                } else {
+                    change.clamp(-max_step, 0.0)
+                };
+
+                let new_speed = {
+                    let mut speed = current_speed + limited_change;
+                    speed = speed.clamp(
+                        self.config.fan_speed_floor as f64,
+                        self.config.fan_speed_ceiling as f64,
+                    );
+                    speed.round()
+                };
+
+                new_speed as u64
             }
             None => self.config.fan_speed_floor,
         }
