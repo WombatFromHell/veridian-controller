@@ -37,18 +37,18 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             gpu_id: 0,
-            temp_thresholds: vec![40, 50, 60, 78, 84],
+            temp_thresholds: vec![40, 50, 60, 74, 82],
             fan_speeds: vec![46, 55, 62, 80, 100],
             fan_speed_floor: 46,
             fan_speed_ceiling: 100,
             sampling_window_size: 10,
-            hysteresis: 3,
+            hysteresis: 2,
             global_delay: 2,
             fan_dwell_time: 10,
             smooth_mode: true,
             smooth_mode_incr_weight: 1.0,
-            smooth_mode_decr_weight: 4.0,
-            smooth_mode_max_fan_step: 5,
+            smooth_mode_decr_weight: 2.0,
+            smooth_mode_max_fan_step: 10,
         }
     }
 }

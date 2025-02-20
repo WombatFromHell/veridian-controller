@@ -5,6 +5,9 @@ use crate::commands;
 use crate::config::Config;
 use chrono::prelude::*;
 
+type ThresholdPair = (u64, u64);
+type ThresholdWindow = (ThresholdPair, Option<ThresholdPair>);
+
 pub fn get_cur_time() -> String {
     let dt: DateTime<Local> = Local::now();
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
@@ -65,15 +68,11 @@ impl ThermalManager {
         let _temps = self.config.temp_thresholds.clone();
         let _speeds = self.config.fan_speeds.clone();
 
-        // rearrange into descending order
-        _temps
-            .into_iter()
-            .zip(_speeds)
-            .rev()
-            .collect::<Vec<(u64, u64)>>()
+        // Pair thresholds and speeds in original order
+        _temps.into_iter().zip(_speeds).collect::<Vec<(u64, u64)>>()
     }
 
-    fn calculate_wma(&mut self) -> u64 {
+    pub fn calculate_wma(&mut self) -> u64 {
         let mut temp_average: f64 = 0.0;
         let mut weight_sum: f64 = 0.0;
 
@@ -86,21 +85,17 @@ impl ThermalManager {
         (temp_average / weight_sum) as u64
     }
 
-    fn select_nearest_fan_speed(&mut self, thresholds: Vec<(u64, u64)>) -> u64 {
-        // create an array of descending tuples and return matching speed directly
+    pub fn select_nearest_fan_speed(&mut self, thresholds: Vec<(u64, u64)>) -> u64 {
         let mut nearest_speed = self.config.fan_speed_floor;
 
-        for (thresh, speed) in thresholds.iter() {
-            let hyst_hi = thresh.saturating_add(self.config.hysteresis);
-            // prefer the higher threshold to reduce overheating
-            if self.current_temp >= hyst_hi {
-                nearest_speed = *speed;
+        // Iterate in reverse to check higher thresholds first
+        for (thresh, speed) in thresholds.into_iter().rev() {
+            if self.current_temp >= thresh {
+                nearest_speed = speed;
                 break;
             }
         }
 
-        // NOTE: generally post-Pascal GPUs cannot go below 30% fan speed
-        // ... or above 80% / 100% depending on the generation and maker
         nearest_speed.clamp(self.config.fan_speed_floor, self.config.fan_speed_ceiling)
     }
 
@@ -116,53 +111,60 @@ impl ThermalManager {
         false
     }
 
-    pub fn get_smooth_speed(&mut self, thresholds: Vec<(u64, u64)>) -> u64 {
-        let base_speed = self.select_nearest_fan_speed(thresholds);
+    fn get_threshold_window(&self, thresholds: &[(u64, u64)]) -> Option<ThresholdWindow> {
+        let current_temp = self.current_temp;
+        let mut lower_threshold = None;
+        let mut upper_threshold = None;
 
-        let fan_speed_range = (self.config.fan_speed_ceiling - self.config.fan_speed_floor) as f64;
+        for &(thresh, speed) in thresholds.iter() {
+            if thresh <= current_temp {
+                lower_threshold = Some((thresh, speed));
+                break; // Found the closest lower threshold
+            } else {
+                upper_threshold = Some((thresh, speed)); // Potentially the closest upper threshold
+            }
+        }
 
-        let target_speed = base_speed as f64
-            + (self.current_temp as f64 - base_speed as f64) * fan_speed_range
-                / self.config.fan_speed_ceiling as f64;
+        lower_threshold
+            .map(|lower| (lower, upper_threshold))
+            .or_else(|| upper_threshold.map(|upper| (upper, None)))
+    }
 
-        let incr_weight = self.config.smooth_mode_incr_weight;
-        let decr_weight = self.config.smooth_mode_decr_weight;
+    pub fn get_smooth_speed(&mut self, thresholds: &[(u64, u64)]) -> u64 {
+        let window = self.get_threshold_window(thresholds);
 
-        let temp_diff = self.current_temp as f64 - self.temp_average as f64;
-        let hysteresis_range = self.config.hysteresis as f64;
+        match window {
+            Some(((lower_thresh, lower_speed), Some((upper_thresh, upper_speed)))) => {
+                let temp_range = (upper_thresh - lower_thresh) as f64;
+                let speed_range = (upper_speed - lower_speed) as f64;
+                let temp_diff = (self.current_temp - lower_thresh) as f64;
 
-        let temp_diff_weighted = if temp_diff.abs() < hysteresis_range {
-            0.0
-        } else {
-            temp_diff * fan_speed_range * (incr_weight - decr_weight) / 2.0
-        };
+                let target_speed = lower_speed as f64 + (temp_diff / temp_range) * speed_range;
 
-        let weighted_average =
-            incr_weight * self.current_temp as f64 + decr_weight * self.temp_average as f64;
-        let _smooth_speed = target_speed + temp_diff_weighted / weighted_average;
+                let current_speed = self.current_fan_speed as f64;
+                let change = target_speed - current_speed;
+                let limited_change = change.clamp(
+                    -(self.config.smooth_mode_max_fan_step as f64),
+                    self.config.smooth_mode_max_fan_step as f64,
+                );
 
-        let output_diff = _smooth_speed - self.current_fan_speed as f64;
-        let abs_output_diff = output_diff.max(-output_diff);
-        let max_speed_change = self.config.smooth_mode_max_fan_step;
-
-        let smooth_speed = if abs_output_diff < self.config.hysteresis as f64 {
-            self.current_fan_speed
-        } else {
-            // limit the max speed change per adjustment period
-            let limit_change = output_diff
-                .max(-(max_speed_change as i64) as f64)
-                .min(max_speed_change as f64);
-            (self.current_fan_speed as f64 + limit_change) as u64
-        };
-
-        smooth_speed.clamp(self.config.fan_speed_floor, self.config.fan_speed_ceiling)
+                (current_speed + limited_change).clamp(
+                    self.config.fan_speed_floor as f64,
+                    self.config.fan_speed_ceiling as f64,
+                ) as u64
+            }
+            Some(((_, speed), None)) => {
+                speed.clamp(self.config.fan_speed_floor, self.config.fan_speed_ceiling)
+            }
+            None => self.config.fan_speed_floor,
+        }
     }
 
     pub fn get_target_fan_speed(&mut self) -> u64 {
         let thresholds = self.generate_thresholds_and_speeds();
 
         if self.config.smooth_mode {
-            self.target_fan_speed = self.get_smooth_speed(thresholds.clone());
+            self.target_fan_speed = self.get_smooth_speed(&thresholds);
         } else {
             self.target_fan_speed = self.select_nearest_fan_speed(thresholds.clone());
         }
