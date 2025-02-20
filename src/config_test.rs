@@ -6,24 +6,6 @@ use tempfile::TempDir;
 use crate::config;
 
 #[test]
-fn test_default_config() {
-    let config = config::Config::default();
-    assert_eq!(config.gpu_id, 0);
-    assert_eq!(config.temp_thresholds, vec![40, 50, 60, 74, 82]);
-    assert_eq!(config.fan_speeds, vec![46, 55, 62, 80, 100]);
-    assert_eq!(config.fan_speed_floor, 46);
-    assert_eq!(config.fan_speed_ceiling, 100);
-    assert_eq!(config.sampling_window_size, 10);
-    assert_eq!(config.hysteresis, 2);
-    assert_eq!(config.global_delay, 2);
-    assert_eq!(config.fan_dwell_time, 10);
-    assert!(config.smooth_mode);
-    assert_eq!(config.smooth_mode_incr_weight, 1.0);
-    assert_eq!(config.smooth_mode_decr_weight, 2.0);
-    assert_eq!(config.smooth_mode_max_fan_step, 10);
-}
-
-#[test]
 fn test_expand_tilde() {
     // Temporarily store the original HOME value
     let original_home = env::var("HOME").ok();

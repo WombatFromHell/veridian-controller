@@ -68,7 +68,6 @@ impl ThermalManager {
         let _temps = self.config.temp_thresholds.clone();
         let _speeds = self.config.fan_speeds.clone();
 
-        // Pair thresholds and speeds in original order
         _temps.into_iter().zip(_speeds).collect::<Vec<(u64, u64)>>()
     }
 
@@ -116,21 +115,25 @@ impl ThermalManager {
         let mut lower_threshold = None;
         let mut upper_threshold = None;
 
-        for &(thresh, speed) in thresholds.iter() {
+        for &(thresh, speed) in thresholds {
             if thresh <= current_temp {
-                lower_threshold = Some((thresh, speed));
-                break; // Found the closest lower threshold
-            } else {
-                upper_threshold = Some((thresh, speed)); // Potentially the closest upper threshold
+                if lower_threshold.map_or(true, |(lt, _)| thresh > lt) {
+                    lower_threshold = Some((thresh, speed));
+                }
+            } else if upper_threshold.map_or(true, |(ut, _)| thresh < ut) {
+                upper_threshold = Some((thresh, speed));
             }
         }
 
-        lower_threshold
-            .map(|lower| (lower, upper_threshold))
-            .or_else(|| upper_threshold.map(|upper| (upper, None)))
+        match (lower_threshold, upper_threshold) {
+            (Some(lower), Some(upper)) => Some((lower, Some(upper))),
+            (Some(lower), None) => Some((lower, None)),
+            (None, Some(upper)) => Some((upper, None)),
+            (None, None) => None,
+        }
     }
 
-    pub fn get_smooth_speed(&mut self, thresholds: &[(u64, u64)]) -> u64 {
+    pub fn get_smooth_speed(&mut self, thresholds: &[ThresholdPair]) -> u64 {
         let window = self.get_threshold_window(thresholds);
 
         match window {
@@ -140,18 +143,28 @@ impl ThermalManager {
                 let temp_diff = (self.current_temp - lower_thresh) as f64;
 
                 let target_speed = lower_speed as f64 + (temp_diff / temp_range) * speed_range;
-
                 let current_speed = self.current_fan_speed as f64;
-                let change = target_speed - current_speed;
-                let limited_change = change.clamp(
-                    -(self.config.smooth_mode_max_fan_step as f64),
-                    self.config.smooth_mode_max_fan_step as f64,
-                );
 
-                (current_speed + limited_change).clamp(
-                    self.config.fan_speed_floor as f64,
-                    self.config.fan_speed_ceiling as f64,
-                ) as u64
+                let change = target_speed - current_speed;
+                let max_step = self.config.smooth_mode_max_fan_step as f64;
+                let limited_change = {
+                    if change > 0.0 && max_step > 0.0 {
+                        change.clamp(0.0, max_step)
+                    } else {
+                        change
+                    }
+                };
+
+                let new_speed = {
+                    let mut speed = current_speed + limited_change;
+                    speed = speed.clamp(
+                        self.config.fan_speed_floor as f64,
+                        self.config.fan_speed_ceiling as f64,
+                    );
+                    speed.round()
+                };
+
+                new_speed as u64
             }
             Some(((_, speed), None)) => {
                 speed.clamp(self.config.fan_speed_floor, self.config.fan_speed_ceiling)
