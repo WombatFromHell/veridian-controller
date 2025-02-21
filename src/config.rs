@@ -37,7 +37,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             gpu_id: 0,
-            temp_thresholds: vec![48, 58, 68, 73, 83],
+            temp_thresholds: vec![48, 58, 68, 78, 86],
             fan_speeds: vec![46, 55, 62, 80, 100],
             fan_speed_floor: 46,
             fan_speed_ceiling: 100,
