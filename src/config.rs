@@ -37,7 +37,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             gpu_id: 0,
-            temp_thresholds: vec![40, 50, 60, 74, 82],
+            temp_thresholds: vec![48, 58, 68, 73, 83],
             fan_speeds: vec![46, 55, 62, 80, 100],
             fan_speed_floor: 46,
             fan_speed_ceiling: 100,
@@ -73,54 +73,27 @@ impl std::error::Error for ConfigError {}
 pub fn expand_tilde(path: &str) -> Result<PathBuf, ConfigError> {
     if path.starts_with("~/") {
         let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
-        let stripped_path = &path
+        let stripped_path = path
             .strip_prefix("~/")
-            .ok_or("Path does not start with '~/'!");
-        Ok(PathBuf::from(home_dir).join(stripped_path.unwrap()))
+            .ok_or(ConfigError::InvalidDirectory)?;
+        Ok(PathBuf::from(home_dir).join(stripped_path))
     } else {
-        // If the path doesn't start with `~/`, return it as-is
         Ok(PathBuf::from(path))
     }
 }
 
 pub fn resolve_path(path: &str) -> Result<PathBuf, ConfigError> {
-    let path = expand_tilde(path)?;
-    let path = Path::new(&path);
+    let expanded_path = expand_tilde(path)?;
+    let expanded_path = Path::new(&expanded_path);
 
-    // If the path is already absolute, use it as-is
-    let resolved_path = if path.is_absolute() {
-        path.to_path_buf()
+    let resolved_path = if expanded_path.is_absolute() {
+        expanded_path.to_path_buf()
     } else {
-        // For relative paths, resolve them relative to the current directory
         let current_dir = env::current_dir().map_err(|_| ConfigError::InvalidDirectory)?;
-        current_dir.join(path)
+        current_dir.join(expanded_path)
     };
 
-    // If the file doesn't exist, create it (touch it)
-    if !resolved_path.exists() {
-        // Create the parent directory if it doesn't exist
-        if let Some(parent) = resolved_path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    eprintln!("Failed to create directory '{}': {}", parent.display(), e);
-                    ConfigError::Io(e)
-                })?;
-            }
-        }
-        File::create(&resolved_path).map_err(|e| {
-            eprintln!("Failed to create file '{}': {}", resolved_path.display(), e);
-            ConfigError::Io(e)
-        })?;
-    }
-
-    resolved_path.canonicalize().map_err(|e| {
-        eprintln!(
-            "Failed to canonicalize path '{}': {}",
-            resolved_path.display(),
-            e
-        );
-        ConfigError::Io(e)
-    })
+    Ok(resolved_path)
 }
 
 pub fn get_config_path(custom_path: Option<String>) -> Result<PathBuf, ConfigError> {
@@ -128,24 +101,24 @@ pub fn get_config_path(custom_path: Option<String>) -> Result<PathBuf, ConfigErr
         custom_path.unwrap_or_else(|| "/etc/veridian-controller.toml".to_string())
     } else {
         let home_dir = env::var("HOME").map_err(|_| ConfigError::MissingHomeDir)?;
-        custom_path.unwrap_or(format!("{}/.config/veridian-controller.toml", home_dir))
+        custom_path.unwrap_or_else(|| format!("{}/.config/veridian-controller.toml", home_dir))
     };
 
-    // Use a fallback just in case the typical paths don't work
-    resolve_path(&path_str).or_else(|_| resolve_path("/tmp/veridian-controller.toml"))
+    resolve_path(&path_str)
 }
 
 impl Config {
     pub fn new(custom_path: Option<String>) -> Result<Config, ConfigError> {
         let file_path = get_config_path(custom_path)?;
 
-        let mut file = File::open(&file_path).map_err(|e| {
-            if e.kind() == ErrorKind::NotFound {
-                ConfigError::MissingConfigFile
-            } else {
-                ConfigError::Io(e)
+        let mut file = match File::open(&file_path) {
+            Ok(file) => file,
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                return Err(ConfigError::MissingConfigFile)
             }
-        })?;
+            Err(e) => return Err(ConfigError::Io(e)),
+        };
+
         println!("Using config file: {}", file_path.display());
 
         let mut contents = String::new();
@@ -164,6 +137,15 @@ impl Config {
     pub fn write_to_file(&self, custom_path: Option<String>) -> Result<(), ConfigError> {
         let file_path = get_config_path(custom_path)?;
 
+        if let Some(parent) = file_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    eprintln!("Failed to create directory '{}': {}", parent.display(), e);
+                    ConfigError::Io(e)
+                })?;
+            }
+        }
+
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -180,48 +162,40 @@ impl Config {
 }
 
 pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, ConfigError> {
-    let _write_path = custom_path.clone();
-    let _path = get_config_path(custom_path)?;
-    let config_path = _path.to_str().map(|s| s.to_string());
-    let config = Config::new(config_path);
+    let config_path = get_config_path(custom_path.clone());
+    let resolved_path = get_config_path(custom_path.clone())?;
+    let config = match config_path {
+        Ok(_) => Config::new(custom_path.clone()),
+        Err(e) => Err(e),
+    };
 
     match config {
         Ok(c) => Ok(c),
-        Err(err) => match err {
-            ConfigError::MissingConfigFile => {
-                println!("Error: No configuration file found!");
-                println!("Writing a default configuration file to: {:?}...", _path);
-                if let Err(write_error) = Config::default().write_to_file(_write_path) {
-                    eprintln!("Failed to write default config file: {}", write_error);
-                    std::process::exit(1);
-                }
-                Ok(Config::default())
-            }
-            ConfigError::Io(err) => {
-                println!("Error: {}", err);
-                std::process::exit(1);
-            }
-            ConfigError::Toml(_) => {
-                println!("Error: Invalid configuration file found!");
-                println!("Writing a default configuration file to: {:?}...", _path);
-                if let Err(write_error) = Config::default().write_to_file(_write_path) {
-                    eprintln!("Failed to write default config file: {}", write_error);
-                    std::process::exit(1);
-                }
-                Ok(Config::default())
-            }
-            ConfigError::MissingHomeDir => {
-                println!("Error: HOME environment variable not set!");
-                std::process::exit(1);
-            }
-            ConfigError::InvalidDirectory => {
-                println!("Error: Invalid directory!");
-                std::process::exit(1);
-            }
-            ConfigError::InvalidArrayFormat => {
-                println!("Error: fan_speeds and temp_thresholds arrays must be the same length!");
-                std::process::exit(1);
-            }
-        },
+        Err(ConfigError::MissingConfigFile) => {
+            println!(
+                "No configuration file found!\nCreating a default config at: {:?}...",
+                resolved_path
+            );
+            let default_config = Config::default();
+            default_config.write_to_file(custom_path)?; // Use original custom_path
+            Ok(default_config)
+        }
+        Err(ConfigError::Toml(_)) => {
+            let path_str = resolved_path
+                .to_str()
+                .ok_or(ConfigError::InvalidDirectory)?
+                .to_string();
+            println!(
+                "Invalid configuration file detected!\nRecreating a default config at: {:?}...",
+                resolved_path
+            );
+            let default_config = Config::default();
+            default_config.write_to_file(Some(path_str))?;
+            Ok(default_config)
+        }
+        Err(e) => {
+            eprintln!("Error loading config: {}", e);
+            std::process::exit(1);
+        }
     }
 }
