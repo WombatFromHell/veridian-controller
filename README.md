@@ -42,9 +42,14 @@ Then integrate this repo as a flake input in your flake.nix like so:
       hostname = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
+          veridian.nixosModules.default # ADD OUR DEFAULT MODULE
           ./configuration.nix # Your config with 'hardware.nvidia' enabled
 
-          veridian.nixosModules.default # ADD OUR DEFAULT MODULE
+          # if you want to use veridian-controller as a system-level systemd unit
+          # rename the 'nixos-unit-example.nix' to something like 'veridian.nix'
+          ./veridian.nix
+          # then elsewhere in your nixos config...
+          services.veridian-controller.enable = true;
         ];
 
         # add a sudoers rule for 'nvidia-settings' so you can use fan control support
@@ -55,7 +60,7 @@ Then integrate this repo as a flake input in your flake.nix like so:
           '';
           extraRules = [
             {
-              # alternatively an admin group can be used here but a specific user is safer
+              # alternatively an admin group can be used here
               # groups = ["wheel"];
               users = ["yourusernamehere"];
               # target the currently installed 'nvidia-settings'
@@ -69,10 +74,11 @@ Then integrate this repo as a flake input in your flake.nix like so:
           ];
         };
 
-        # somewhere else in your home-manager config...
-        # rename 'unit-example.nix' to something like 'veridian.nix'
-        imports = [ ./veridian.nix ];
-        veridian-controller.enable = true;
+        # otherwise, you can use veridian-controller in your home-manager config
+        # rename 'hm-unit-example.nix' to something like 'veridian.nix'
+        #
+        # imports = [ ./home/veridian.nix ];
+        # veridian-controller.enable = true;
       };
     };
   };
