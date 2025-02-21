@@ -108,13 +108,13 @@ fn test_get_smooth_speed() {
     // Test cases: (current_temp, current_fan_speed, expected_result)
     let test_cases = vec![
         (39, 0, 46),   // Test speed floor
-        (55, 50, 59),  // Increasing temperature
-        (57, 60, 60),  // Test relative stability
-        (60, 57, 62),  // At upper threshold
-        (82, 90, 100), // Test speed ceiling
+        (65, 55, 60),  // Increasing temperature
+        (67, 60, 60),  // Test relative stability
+        (68, 57, 62),  // At upper threshold
+        (83, 90, 100), // Test speed ceiling
         (94, 90, 100), // Beyond max threshold
-        (62, 50, 60),  // Max step limit (increase)
-        (40, 60, 50),  // Max step limit (decrease)
+        (68, 50, 60),  // Max step limit (increase)
+        (48, 60, 50),  // Max step limit (decrease)
         (76, 46, 56),  // Beyond max step limit (increase)
         (32, 80, 70),  // Beyond max step limit (decrease)
     ];
