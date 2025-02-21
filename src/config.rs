@@ -93,7 +93,18 @@ pub fn resolve_path(path: &str) -> Result<PathBuf, ConfigError> {
         current_dir.join(expanded_path)
     };
 
-    Ok(resolved_path)
+    if resolved_path.exists() {
+        resolved_path.canonicalize().map_err(|e| {
+            eprintln!(
+                "Failed to canonicalize path '{}': {}",
+                resolved_path.display(),
+                e
+            );
+            ConfigError::Io(e)
+        })
+    } else {
+        Ok(resolved_path)
+    }
 }
 
 pub fn get_config_path(custom_path: Option<String>) -> Result<PathBuf, ConfigError> {
@@ -163,7 +174,6 @@ impl Config {
 
 pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, ConfigError> {
     let config_path = get_config_path(custom_path.clone());
-    let resolved_path = get_config_path(custom_path.clone())?;
     let config = match config_path {
         Ok(_) => Config::new(custom_path.clone()),
         Err(e) => Err(e),
@@ -172,25 +182,23 @@ pub fn load_config_from_env(custom_path: Option<String>) -> Result<Config, Confi
     match config {
         Ok(c) => Ok(c),
         Err(ConfigError::MissingConfigFile) => {
-            println!(
-                "No configuration file found!\nCreating a default config at: {:?}...",
-                resolved_path
-            );
             let default_config = Config::default();
-            default_config.write_to_file(custom_path)?; // Use original custom_path
+            default_config.write_to_file(custom_path.clone())?;
+            let resolved_path = get_config_path(custom_path.clone())?;
+            println!(
+                "No configuration file found!\nCreated a new config at: {}...",
+                resolved_path.display()
+            );
             Ok(default_config)
         }
         Err(ConfigError::Toml(_)) => {
-            let path_str = resolved_path
-                .to_str()
-                .ok_or(ConfigError::InvalidDirectory)?
-                .to_string();
-            println!(
-                "Invalid configuration file detected!\nRecreating a default config at: {:?}...",
-                resolved_path
-            );
             let default_config = Config::default();
-            default_config.write_to_file(Some(path_str))?;
+            default_config.write_to_file(custom_path.clone())?;
+            let resolved_path = get_config_path(custom_path.clone())?;
+            println!(
+                "Invalid configuration file detected!\nRecreating a default config at: {}...",
+                resolved_path.display()
+            );
             Ok(default_config)
         }
         Err(e) => {

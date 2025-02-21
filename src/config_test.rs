@@ -35,23 +35,26 @@ fn test_expand_tilde() {
 
 #[test]
 fn test_resolve_path() {
+    // Test with an existing path
     let temp_dir = TempDir::new().unwrap();
     let base_path = temp_dir.path();
-
-    // Test absolute path resolution
-    let abs_path = base_path.join("config.toml");
-    let resolved = config::resolve_path(abs_path.to_str().unwrap()).unwrap();
+    let existing_file = base_path.join("existing.toml");
+    fs::write(&existing_file, "").unwrap();
+    let resolved = config::resolve_path(existing_file.to_str().unwrap()).unwrap();
     assert!(resolved.is_absolute());
+    assert!(!resolved.to_string_lossy().contains(".."));
 
-    // Test relative path resolution
-    let relative_path = "../test_config.toml";
-    let resolved = config::resolve_path(relative_path).unwrap();
+    // Test with a non-existent path
+    let non_existent_file = temp_dir.path().join("non_existent.toml");
+    let resolved = config::resolve_path(non_existent_file.to_str().unwrap()).unwrap();
     assert!(resolved.is_absolute());
+    assert!(resolved.ends_with("non_existent.toml"));
 
-    // Test another version of relative path resolution
-    let relative_path = "test_config.toml";
-    let resolved = config::resolve_path(relative_path).unwrap();
+    // Test with a relative path containing `..`
+    let parent_file = temp_dir.path().join("../parent.toml");
+    let resolved = config::resolve_path(parent_file.to_str().unwrap()).unwrap();
     assert!(resolved.is_absolute());
+    assert!(resolved.ends_with("parent.toml"));
 
     // Test nested path resolution
     let nested_path = base_path.join("nested/config/test.toml");
