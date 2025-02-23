@@ -5,8 +5,8 @@ use crate::commands;
 use crate::config::Config;
 use chrono::prelude::*;
 
-type ThresholdPair = (u64, u64);
-type ThresholdWindow = (ThresholdPair, Option<ThresholdPair>);
+pub type ThresholdPair = (u64, u64);
+pub type ThresholdWindow = (ThresholdPair, Option<ThresholdPair>);
 
 pub fn get_cur_time() -> String {
     let dt: DateTime<Local> = Local::now();
@@ -110,26 +110,30 @@ impl ThermalManager {
         false
     }
 
-    fn get_threshold_window(&self, thresholds: &[(u64, u64)]) -> Option<ThresholdWindow> {
+    pub fn get_threshold_window(&self, thresholds: &[(u64, u64)]) -> Option<ThresholdWindow> {
         let current_temp = self.current_temp;
-        let mut lower_threshold = None;
-        let mut upper_threshold = None;
 
-        for &(thresh, speed) in thresholds {
-            if thresh <= current_temp {
-                if lower_threshold.map_or(true, |(lt, _)| thresh > lt) {
-                    lower_threshold = Some((thresh, speed));
-                }
-            } else if upper_threshold.map_or(true, |(ut, _)| thresh < ut) {
-                upper_threshold = Some((thresh, speed));
-            }
-        }
+        // Find the highest threshold that is less than or equal to the current temperature.
+        let lower_threshold = thresholds
+            .iter()
+            .filter(|&&(threshold, _)| threshold <= current_temp)
+            .max_by_key(|&&(threshold, _)| threshold)
+            .copied();
 
-        match (lower_threshold, upper_threshold) {
-            (Some(lower), Some(upper)) => Some((lower, Some(upper))),
-            (Some(lower), None) => Some((lower, None)),
-            (None, Some(upper)) => Some((upper, None)),
-            (None, None) => None,
+        // Find the lowest threshold that is greater than the current temperature.
+        let upper_threshold = thresholds
+            .iter()
+            .filter(|&&(threshold, _)| threshold > current_temp)
+            .min_by_key(|&(threshold, _)| threshold)
+            .copied();
+
+        // Assemble the threshold window.
+        // If a lower threshold exists, return it with the (optional) upper threshold.
+        // Otherwise, if only an upper threshold exists, return that alone.
+        if let Some(lower) = lower_threshold {
+            Some((lower, upper_threshold))
+        } else {
+            upper_threshold.map(|upper| (upper, None))
         }
     }
 
@@ -166,8 +170,13 @@ impl ThermalManager {
                 let target_speed = lower_speed as f64 + (temp_diff / temp_range) * speed_range;
                 compute_new_speed(target_speed)
             }
-            Some(((_, lower_speed), None)) => {
-                let target_speed = lower_speed as f64;
+            Some((lower_pair, None)) => {
+                let (lower_thresh, lower_speed) = lower_pair;
+                let target_speed = if self.current_temp > lower_thresh {
+                    self.config.fan_speed_ceiling as f64
+                } else {
+                    lower_speed as f64
+                };
                 compute_new_speed(target_speed)
             }
             None => self.config.fan_speed_floor,

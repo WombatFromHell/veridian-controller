@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use crate::config::Config;
 use crate::thermalmanager::ThermalManager;
 
@@ -66,37 +64,89 @@ fn test_select_nearest_fan_speed() {
 }
 
 #[test]
+fn test_get_threshold_window() {
+    let config = Config::default();
+    let mut thermal_manager = ThermalManager::new(config);
+
+    // Define the thresholds based on the Config struct
+    let thresholds = vec![(48, 46), (58, 55), (68, 62), (78, 80), (86, 100)];
+
+    let test_cases = vec![
+        (
+            48,
+            thresholds.clone(),
+            Some(((48, 46), Some((58, 55)))),
+            "Current temperature matches lower threshold",
+        ),
+        (
+            60,
+            thresholds.clone(),
+            Some(((58, 55), Some((68, 62)))),
+            "Current temperature is between two thresholds",
+        ),
+        (
+            80,
+            thresholds.clone(),
+            Some(((78, 80), Some((86, 100)))),
+            "Current temperature is between two higher thresholds",
+        ),
+        (
+            40,
+            thresholds.clone(),
+            Some(((48, 46), None)),
+            "Current temperature below all thresholds",
+        ),
+        (
+            90,
+            thresholds.clone(),
+            Some(((86, 100), None)),
+            "Current temperature above all thresholds",
+        ),
+        (
+            86,
+            thresholds.clone(),
+            Some(((86, 100), None)),
+            "Current temperature matches upper threshold",
+        ),
+        (50, Vec::<(u64, u64)>::new(), None, "No thresholds provided"),
+    ];
+
+    for (current_temp, thresholds, expected, description) in test_cases {
+        thermal_manager.current_temp = current_temp;
+        let result = thermal_manager.get_threshold_window(&thresholds);
+        assert_eq!(
+            result, expected,
+            "Failed for {}: current_temp={}, thresholds={:?}, expected={:?}, got={:?}",
+            description, current_temp, thresholds, expected, result
+        );
+    }
+}
+
+#[test]
 fn test_calculate_wma() {
     let config = Config::default();
     let mut thermal_manager = ThermalManager::new(config);
 
-    // Test with varying temperatures
-    thermal_manager.samples = VecDeque::from(vec![40, 50, 60, 70, 80]);
-    assert_eq!(thermal_manager.calculate_wma(), 57);
+    // Test cases: (samples, expected_wma, description)
+    let test_cases = vec![
+        (vec![40, 50, 60, 70, 80], 57, "Varying temperatures"),
+        (vec![40, 40, 40, 40, 40], 40, "Constant temperature"),
+        (vec![80, 80, 80, 80, 80], 80, "High constant temperature"),
+        (vec![45, 55, 65, 75, 85], 62, "Increasing temperatures"),
+        (vec![44, 46, 50, 54, 56], 49, "Small variations"),
+        (vec![40, 42, 44, 46, 48], 43, "Small increasing variations"),
+        (vec![52, 54, 56, 58, 60], 55, "Small decreasing variations"),
+    ];
 
-    // Test with constant temperature
-    thermal_manager.samples = VecDeque::from(vec![40, 40, 40, 40, 40]);
-    assert_eq!(thermal_manager.calculate_wma(), 40);
-
-    // Test with high constant temperature
-    thermal_manager.samples = VecDeque::from(vec![80, 80, 80, 80, 80]);
-    assert_eq!(thermal_manager.calculate_wma(), 80);
-
-    // Test with increasing temperatures
-    thermal_manager.samples = VecDeque::from(vec![45, 55, 65, 75, 85]);
-    assert_eq!(thermal_manager.calculate_wma(), 62);
-
-    // Test with small variations
-    thermal_manager.samples = VecDeque::from(vec![44, 46, 50, 54, 56]);
-    assert_eq!(thermal_manager.calculate_wma(), 49);
-
-    // Test with small increasing variations
-    thermal_manager.samples = VecDeque::from(vec![40, 42, 44, 46, 48]);
-    assert_eq!(thermal_manager.calculate_wma(), 43);
-
-    // Test with small decreasing variations
-    thermal_manager.samples = VecDeque::from(vec![52, 54, 56, 58, 60]);
-    assert_eq!(thermal_manager.calculate_wma(), 55);
+    for (samples, expected_wma, description) in test_cases {
+        thermal_manager.samples = std::collections::VecDeque::from(samples);
+        let result = thermal_manager.calculate_wma();
+        assert_eq!(
+            result, expected_wma,
+            "Failed for {}: expected {} but got {}",
+            description, expected_wma, result
+        );
+    }
 }
 
 #[test]
@@ -111,7 +161,7 @@ fn test_get_smooth_speed() {
         (65, 55, 60),  // Increasing temperature
         (67, 60, 60),  // Test relative stability
         (68, 57, 62),  // At upper threshold
-        (83, 90, 100), // Test speed ceiling
+        (86, 90, 100), // Test speed ceiling
         (94, 90, 100), // Beyond max threshold
         (68, 50, 60),  // Max step limit (increase)
         (48, 60, 50),  // Max step limit (decrease)
